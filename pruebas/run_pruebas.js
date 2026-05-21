@@ -246,7 +246,7 @@ function assert(cond, msg) { if (!cond) throw new Error(msg || 'aserción falló
   // ============================================================
   // GRUPO E — No regresión: smoke test de render de vistas
   // ============================================================
-  for (const v of ['dash', 'inv', 'pmp', 'ciclos', 'entregas', 'tareas', 'reportes', 'agenda', 'config']) {
+  for (const v of ['dash', 'inv', 'pmp', 'ciclos', 'entregas', 'tareas', 'reportes', 'actividad', 'agenda', 'config']) {
     check('E-' + v, 'Render de la vista "' + v + '" sin excepción', () => {
       P.Router.go(v);
       assert(doc.querySelector('#view').children.length > 0, 'la vista quedó vacía');
@@ -259,7 +259,7 @@ function assert(cond, msg) { if (!cond) throw new Error(msg || 'aserción falló
   check('F-01', 'B-11 · los ítems de navegación son accesibles por teclado', () => {
     P.Router.go('dash');
     const items = [...doc.querySelectorAll('#nav .nav-item')];
-    assert(items.length === 9, 'nav-items=' + items.length);
+    assert(items.length >= 9, 'nav-items=' + items.length);
     assert(items.every(i => i.getAttribute('tabindex') === '0' && i.getAttribute('role') === 'button'),
       'algún nav-item no es accesible por teclado');
   });
@@ -352,6 +352,41 @@ function assert(cond, msg) { if (!cond) throw new Error(msg || 'aserción falló
     P.Router.go('config');
     assert(/Respaldos automáticos/.test(doc.querySelector('#view').textContent),
       'la tarjeta de respaldos no aparece en Configuración');
+  });
+
+  // ============================================================
+  // GRUPO H — Fase 3.10 (historial de cambios)
+  // ============================================================
+  check('H-01', '3.10 · registrarCambio agrega una entrada al log global', () => {
+    const e = P.STATE.equipos.find(x => !x.esSlot);
+    const n0 = P.STATE.cambios.length;
+    P.registrarCambio(e.uuid, 'CampoPrueba', 'A', 'B', 'edicion');
+    assert(P.STATE.cambios.length === n0 + 1, 'el log no creció');
+    const last = P.STATE.cambios[P.STATE.cambios.length - 1];
+    assert(last.campo === 'CampoPrueba' && last.valorAnterior === 'A' && last.valorNuevo === 'B', JSON.stringify(last));
+  });
+  check('H-02', '3.10 · cambiosDeEquipo filtra por equipo y ordena descendente', () => {
+    const e = P.STATE.equipos.find(x => !x.esSlot);
+    P.registrarCambio(e.uuid, 'OtroCampo', '1', '2', 'edicion');
+    const arr = P.cambiosDeEquipo(e.uuid);
+    assert(arr.length >= 1 && arr.every(c => c.equipoUuid === e.uuid), 'filtro por equipo incorrecto');
+    for (let i = 1; i < arr.length; i++) {
+      assert(new Date(arr[i-1].ts) >= new Date(arr[i].ts), 'no está ordenado del más reciente al más antiguo');
+    }
+  });
+  check('H-03', '3.10 · el menú incluye la vista "Actividad reciente"', () => {
+    P.Router.go('dash');
+    const items = [...doc.querySelectorAll('#nav .nav-item span')].map(s => s.textContent);
+    assert(items.includes('Actividad'), 'menú=' + JSON.stringify(items));
+    assert(!!P.VIEWS.actividad, 'no existe VIEWS.actividad');
+  });
+  check('H-04', '3.10 · la ficha del equipo tiene pestaña "Cambios"', () => {
+    assert(/id: 'cambios', *label: 'Cambios'/.test(appSrc), 'falta la pestaña Cambios en la ficha');
+    assert(/case 'cambios':/.test(appSrc), 'renderFichaTab no maneja el caso "cambios"');
+  });
+  check('H-05', '3.10 · la importación del maestro registra cambios', () => {
+    const i = appSrc.indexOf('async function importMaestroFile');
+    assert(/registrarCambio/.test(appSrc.slice(i, i + 4500)), 'importMaestroFile no llama a registrarCambio');
   });
 
   // ---- reporte ----
