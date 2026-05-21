@@ -389,6 +389,48 @@ function assert(cond, msg) { if (!cond) throw new Error(msg || 'aserción falló
     assert(/registrarCambio/.test(appSrc.slice(i, i + 4500)), 'importMaestroFile no llama a registrarCambio');
   });
 
+  // ============================================================
+  // GRUPO I — Fase 3.11 (búsqueda libre)
+  // ============================================================
+  check('I-01', '3.11 · buscarLibre encuentra por número de serie', () => {
+    const e = P.STATE.equipos.find(x => x.serie);
+    const res = P.buscarLibre(e.serie);
+    assert(res.some(r => r.equipo.uuid === e.uuid && r.donde === 'Serie'), 'no encontró por serie');
+  });
+  check('I-02', '3.11 · buscarLibre encuentra por marca e indica dónde coincide', () => {
+    const e = P.STATE.equipos.find(x => x.marca);
+    const res = P.buscarLibre(e.marca);
+    assert(res.some(r => r.equipo.uuid === e.uuid && r.donde), 'no encontró por marca');
+  });
+  check('I-03', '3.11 · buscarLibre sin coincidencias devuelve lista vacía', () => {
+    assert(P.buscarLibre('zzz-no-existe-xyz-123').length === 0, 'debería ser vacío');
+  });
+  check('I-04', '3.11 · la caja de búsqueda del header existe', () => {
+    assert(doc.querySelector('#headerSearchInput'), 'falta #headerSearchInput');
+    assert(doc.querySelector('#headerSearchResults'), 'falta el panel de resultados');
+  });
+  check('I-05', '3.11 · el atajo "/" enfoca la caja de búsqueda', () => {
+    const inp = doc.querySelector('#headerSearchInput');
+    inp.blur();
+    doc.body.dispatchEvent(new window.KeyboardEvent('keydown', { key: '/', bubbles: true }));
+    assert(doc.activeElement === inp, 'la tecla "/" no enfocó la caja');
+  });
+  // I-06 — asíncrono por el debounce de 200 ms.
+  await (async () => {
+    try {
+      const inp = doc.querySelector('#headerSearchInput');
+      const e = P.STATE.equipos.find(x => x.marca);
+      inp.value = e.marca;
+      inp.dispatchEvent(new window.Event('input', { bubbles: true }));
+      await new Promise(r => setTimeout(r, 300));
+      const panel = doc.querySelector('#headerSearchResults');
+      const ok = panel.classList.contains('open') && panel.querySelectorAll('.hs-item').length > 0;
+      results.push({ id: 'I-06', desc: '3.11 · escribir en la caja muestra resultados en vivo', ok, err: ok ? undefined : 'el dropdown no mostró resultados' });
+    } catch (e) {
+      results.push({ id: 'I-06', desc: '3.11 · escribir en la caja muestra resultados en vivo', ok: false, err: e.message });
+    }
+  })();
+
   // ---- reporte ----
   const ok = results.filter(r => r.ok).length;
   const fail = results.filter(r => !r.ok).length;
