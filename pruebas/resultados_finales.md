@@ -1,0 +1,41 @@
+# Resultados de la última ejecución de pruebas
+
+**Arnés:** `pruebas/run_pruebas.js` (jsdom) · **Comando:** `npm install jsdom && node pruebas/run_pruebas.js`
+
+---
+
+## Última ejecución — cierre de Fase 1
+
+**Resultado global: 27 / 27 PASA · 0 FALLA.**
+
+| ID | Resultado | Descripción |
+|---|---|---|
+| A-01 | PASA | La app arranca y carga 60 equipos del dataset |
+| A-02 | PASA | Conteo por estado coherente con el dataset |
+| A-03 | PASA | Pendientes cargados |
+| B-MP-01 | PASA | `MP.register` con resultado SI deja el equipo Operativo |
+| B-CIC-01 | PASA | `CICLO.crearSolicitud` abre ciclo y deja el equipo NoOperativo |
+| B-CIC-02 | PASA | `CICLO.agregarEnvio` (ciclo nuevo) deja el equipo en ServicioTecnico |
+| B-CIC-03 | PASA | El shim `CICLO.crear` con folio vacío sigue lanzando error (causa raíz de B-01) |
+| C-B01 | PASA | **B-01** · Vincular causal C2 creando ciclo nuevo funciona y no lanza "modelo viejo" |
+| C-B02 | PASA | **B-02** · Vincular causal C3 creando ciclo nuevo funciona y no lanza "modelo viejo" |
+| C-B04 | PASA | **B-04** · El selector de ciclo existente (C3) no muestra "undefined" |
+| C-B09 | PASA | **B-09** · `renderSessionChip` escapa el nombre de archivo (sin inyección de HTML) |
+| D-B03a | PASA | **B-03** · `exportBackup` incluye `tecnicosOficiales` y `diffIgnorados` |
+| D-B03b | PASA | **B-03** · `importBackup` restaura `tecnicosOficiales` y `diffIgnorados` |
+| D-B06 | PASA | **B-06** · `renderCumplimientoSidecar` recibe el mes por parámetro |
+| D-B07 | PASA | **B-07** · `matchKey` tiene clave compuesta de respaldo |
+| D-B08 | PASA | **B-08** · `imprimirAnexo1` usa el modelo de ciclo v34 |
+| D-B01src | PASA | **B-01** · el modal C2 ya no llama al shim `CICLO.crear` |
+| D-B02src | PASA | **B-02** · el modal C3 ya no llama al shim `CICLO.crear` |
+| E-dash … E-config | PASA (9) | Render de las 9 vistas sin excepción (no regresión) |
+
+---
+
+## Historial de ejecuciones
+
+| Fecha | Fase | PASA | FALLA | Nota |
+|---|---|---|---|---|
+| 2026-05-21 | Cierre Fase 1 | 27 | 0 | 8 casos del contrato pasaron de FALLA a PASA; 0 regresiones. |
+
+> Este archivo se actualiza en cada cierre de fase con el resultado de la última corrida completa del arnés.
