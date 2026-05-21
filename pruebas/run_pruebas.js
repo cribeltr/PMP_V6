@@ -251,6 +251,57 @@ function assert(cond, msg) { if (!cond) throw new Error(msg || 'aserción falló
     });
   }
 
+  // ============================================================
+  // GRUPO F — Fase 2: accesibilidad, navegación y limpieza
+  // ============================================================
+  check('F-01', 'B-11 · los ítems de navegación son accesibles por teclado', () => {
+    P.Router.go('dash');
+    const items = [...doc.querySelectorAll('#nav .nav-item')];
+    assert(items.length === 9, 'nav-items=' + items.length);
+    assert(items.every(i => i.getAttribute('tabindex') === '0' && i.getAttribute('role') === 'button'),
+      'algún nav-item no es accesible por teclado');
+  });
+  check('F-02', 'La navegación está agrupada (rótulos de grupo)', () => {
+    const labels = [...doc.querySelectorAll('#nav .nav-group-label')].map(x => x.textContent);
+    assert(labels.includes('Operación') && labels.includes('Gestión') && labels.includes('Sistema'),
+      'grupos=' + JSON.stringify(labels));
+  });
+  check('F-03', 'B-10 · field() asocia el <label> con su control vía for/id', () => {
+    cerrarModales();
+    P.abrirModalNuevoPendiente();
+    const m = modalActual();
+    const fields = [...m.querySelectorAll('.field')];
+    const conLabel = fields.filter(f => {
+      const lbl = f.querySelector('label'), ctl = f.querySelector('input,select,textarea');
+      return lbl && ctl && ctl.id && lbl.getAttribute('for') === ctl.id;
+    });
+    assert(conLabel.length >= 1, 'ningún campo tiene label asociado');
+    cerrarModales();
+  });
+  check('F-04', 'B-11 · los KPI clickeables son accesibles por teclado', () => {
+    P.Router.go('dash');
+    const kpis = [...doc.querySelectorAll('.kpi[role="button"]')];
+    assert(kpis.length > 0 && kpis.every(k => k.getAttribute('tabindex') === '0'),
+      'KPIs accesibles=' + kpis.length);
+  });
+  check('F-05', 'Navegación móvil: botón hamburguesa y velo presentes', () => {
+    assert(doc.querySelector('#menuToggle'), 'falta #menuToggle');
+    assert(doc.querySelector('#navScrim'), 'falta #navScrim');
+    doc.querySelector('#menuToggle').dispatchEvent(new window.Event('click', { bubbles: true }));
+    assert(doc.querySelector('#app').classList.contains('nav-open'), 'el menú no se abrió');
+    doc.querySelector('#navScrim').dispatchEvent(new window.Event('click', { bubbles: true }));
+    assert(!doc.querySelector('#app').classList.contains('nav-open'), 'el menú no se cerró');
+  });
+  check('F-06', 'B-14/B-15 · código muerto eliminado', () => {
+    ['function rowForEquipo', 'function soonView(', 'function fuzzyMatch', 'function sugerirTecnicos']
+      .forEach(s => assert(!appSrc.includes(s), 'todavía existe: ' + s));
+    assert(!/if\s*\(solicitudesAbiertas\.length \|\| true\)/.test(appSrc), 'todavía existe el if "|| true"');
+  });
+  check('F-07', 'El sistema de diseño define escalas de espaciado y tipografía', () => {
+    assert(/--sp-1:\s*4px/.test(html) && /--fs-base:\s*13px/.test(html),
+      'faltan los tokens de diseño');
+  });
+
   // ---- reporte ----
   const ok = results.filter(r => r.ok).length;
   const fail = results.filter(r => !r.ok).length;

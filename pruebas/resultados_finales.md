@@ -32,10 +32,27 @@
 
 ---
 
+## Fase 2 — pruebas añadidas (accesibilidad, navegación, limpieza)
+
+| ID | Resultado | Descripción |
+|---|---|---|
+| F-01 | PASA | B-11 · los ítems de navegación son accesibles por teclado |
+| F-02 | PASA | La navegación está agrupada (rótulos de grupo) |
+| F-03 | PASA | B-10 · `field()` asocia el `<label>` con su control vía `for`/`id` |
+| F-04 | PASA | B-11 · los KPI clickeables son accesibles por teclado |
+| F-05 | PASA | Navegación móvil: botón hamburguesa y velo presentes y funcionales |
+| F-06 | PASA | B-14/B-15 · código muerto eliminado |
+| F-07 | PASA | El sistema de diseño define escalas de espaciado y tipografía |
+
+**Cierre de Fase 2: 34 / 34 PASA · 0 FALLA.**
+
+---
+
 ## Historial de ejecuciones
 
 | Fecha | Fase | PASA | FALLA | Nota |
 |---|---|---|---|---|
 | 2026-05-21 | Cierre Fase 1 | 27 | 0 | 8 casos del contrato pasaron de FALLA a PASA; 0 regresiones. |
+| 2026-05-21 | Cierre Fase 2 | 34 | 0 | +7 pruebas de accesibilidad/navegación; 0 regresiones sobre las 27 previas. |
 
 > Este archivo se actualiza en cada cierre de fase con el resultado de la última corrida completa del arnés.
