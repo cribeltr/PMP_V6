@@ -2,11 +2,13 @@
 
 **Arnés:** `pruebas/run_pruebas.js` (jsdom) · **Comando:** `npm install jsdom && node pruebas/run_pruebas.js`
 
+> **Última ejecución — cierre de Fase 3: 84 / 84 PASA · 0 FALLA.** El detalle por fase está abajo (acumulativo).
+
 ---
 
-## Última ejecución — cierre de Fase 1
+## Fase 1 — pruebas base
 
-**Resultado global: 27 / 27 PASA · 0 FALLA.**
+**Resultado: 27 / 27 PASA · 0 FALLA.**
 
 | ID | Resultado | Descripción |
 |---|---|---|
@@ -60,7 +62,27 @@
 | G-06 | PASA | 3.12 · `importBackup` y "borrar datos" usan confirmación escrita |
 | G-07 | PASA | 3.8 · Configuración muestra la tarjeta de respaldos automáticos |
 
-**Cierre del avance de Fase 3 (3.8 + 3.12): 41 / 41 PASA · 0 FALLA.**
+---
+
+## Fase 3 completa — grupos de prueba
+
+| Grupo | Funcionalidad | Pruebas |
+|---|---|---|
+| G | 3.8 respaldo automático + 3.12 confirmación escrita | G-01…G-07 |
+| H | 3.10 historial de cambios | H-01…H-05 |
+| I | 3.11 búsqueda libre | I-01…I-06 |
+| J | 3.2 vistas de filtros guardadas | J-01…J-04 |
+| K | 3.1 exportación filtrada con metadata | K-01…K-04 |
+| L | 3.3 trazabilidad (comentario manual) | L-01…L-03 |
+| M | 3.4 recordatorios (hora, posponer, eliminar) | M-01…M-04 |
+| N | 3.5 centro de alertas | N-01…N-06 |
+| O | 3.7 conciliación (CSV + historial) | O-01…O-04 |
+| P | 3.6 informe mensual por servicio | P-01…P-03 |
+| Q | 3.9 dashboard (atajos + medición) | Q-01…Q-03 |
+
+**Cierre de Fase 3 — las 12 funcionalidades: 84 / 84 PASA · 0 FALLA.**
+
+Medición de rendimiento (3.9): el render del Dashboard con el dataset de 60 equipos tarda ~15–60 ms (consola: `[perf] Dashboard renderizado en … ms`).
 
 ---
 
@@ -71,5 +93,6 @@
 | 2026-05-21 | Cierre Fase 1 | 27 | 0 | 8 casos del contrato pasaron de FALLA a PASA; 0 regresiones. |
 | 2026-05-21 | Cierre Fase 2 | 34 | 0 | +7 pruebas de accesibilidad/navegación; 0 regresiones sobre las 27 previas. |
 | 2026-05-21 | Avance Fase 3 (3.8, 3.12) | 41 | 0 | +7 pruebas de respaldo automático y confirmación escrita; 0 regresiones. |
+| 2026-05-21 | Cierre Fase 3 (12 funcionalidades) | 84 | 0 | +43 pruebas (grupos H–Q); 0 regresiones sobre las 41 previas. |
 
 > Este archivo se actualiza en cada cierre de fase con el resultado de la última corrida completa del arnés.

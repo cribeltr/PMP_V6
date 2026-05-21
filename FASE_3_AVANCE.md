@@ -1,69 +1,96 @@
-# FASE 3 — Avance de la expansión funcional (acumulativo)
+# FASE 3 — Expansión funcional (reporte acumulativo)
 
 **Backup previo:** `pre_fase_3_backup.html`.
-**Verificación continua:** arnés `pruebas/run_pruebas.js` — al cierre de este avance, **41/41 pruebas PASA** (0 regresiones sobre las 34 previas).
+**Verificación:** arnés `pruebas/run_pruebas.js` — **84/84 pruebas PASA, 0 regresiones** sobre las 34 de Fases 0–2.
 
-> **Estado:** 2 de las 12 funcionalidades de Fase 3 están implementadas y verificadas (3.8 y 3.12). El resto está planificado y documentado en la sección "Pendiente" y en `REPORTE_FINAL.md`. La auditoría 0.2 ya estableció que la mayoría de las 12 funcionalidades **existen parcialmente** en la herramienta; la decisión autónoma adoptada es **enriquecer lo existente** sin reconstruir lo que ya funciona (regla "no romper nada").
+> **Estado: las 12 funcionalidades de Fase 3 están implementadas y verificadas.**
+> Enfoque adoptado (decisión autónoma confirmada): **enriquecer lo existente** sin reconstruir lo que ya funcionaba — la auditoría 0.2 mostró que la mayoría de las funcionalidades ya existían parcialmente.
 
----
+## Orden de implementación
 
-## 3.8 — Persistencia y respaldo de datos  ✅ Implementada
+Se siguió el orden del documento (3.8 → 3.10 → 3.12 → 3.11 → 3.2 → 3.1 → 3.3 → 3.4 → 3.5 → 3.7 → 3.6 → 3.9), con una sola variación documentada: la **3.12** se completó junto con la 3.8 porque la 3.8 ("confirmación escrita al importar") depende del diálogo de palabra escrita que define la 3.12.
 
-**Diagnóstico previo (0.6):** la herramienta ya persiste en `localStorage` y tiene exportar/restaurar respaldo (JSON). Faltaba: respaldo automático con rotación, alerta de capacidad y confirmación reforzada al importar.
-
-**Implementado:**
-- **Respaldo automático con rotación FIFO (7 snapshots):** clave separada `pmp.v3.autobackups`. Se crea uno **por sesión cada 24 h** (al arrancar, si no hubo uno reciente) y **uno al cerrar la pestaña** si hubo cambios (bandera `_datosModificados`, que se marca en `persist()`). Si no hay espacio, descarta los más antiguos y reintenta.
-- **Estimación de capacidad de `localStorage`** (`capacidadStorage()`) y **banner persistente** que aparece en cualquier vista cuando el uso supera el **80 %**.
-- **Tarjeta "Respaldos automáticos"** en Configuración: barra de capacidad, lista de snapshots (fecha, motivo, equipos, tamaño), y acciones **Restaurar / Eliminar / Crear respaldo ahora**.
-- **Exportación de respaldo completo:** archivo `respaldo_equipos_AAAA-MM-DD-HHMM.json` con toda la base.
-- **Importación de respaldo:** valida estructura; muestra los conteos ("vas a reemplazar X por Y equipos"); exige **confirmación escrita** (`IMPORTAR`); crea un snapshot de seguridad **antes** de sobreescribir.
-- Refactor: `construirPayloadBackup()` / `aplicarPayloadBackup()` como única fuente del formato de respaldo (lo usan exportar, importar y los snapshots).
-
-**Decisiones tomadas:**
-- El límite de `localStorage` se asume en ~5 MB (valor típico). Es una estimación; el banner al 80 % y el reintento con descarte cubren el caso de desbordamiento real.
-- Los snapshots se guardan en el mismo `localStorage`. Con bases grandes, 7 snapshots pueden presionar la capacidad; por eso la rotación, el descarte-y-reintento y la alerta. El respaldo manual descargable sigue siendo la red de seguridad principal.
-
-**Pruebas que pasan:** `G-01` (crear snapshot), `G-02` (rotación FIFO ≤7), `G-03` (capacidad), `G-04` (eliminar snapshot), `G-07` (tarjeta en Configuración), `D-B03a/b` (payload completo). Sin regresiones.
+Antes de cada funcionalidad se extendió el contrato funcional con sus casos de prueba (grupos G a Q del arnés); cada commit corrió el arnés completo confirmando 0 regresiones.
 
 ---
 
-## 3.12 — Confirmación antes de borrar  ✅ Implementada
+## 3.8 — Persistencia y respaldo de datos ✅
 
-> **Nota de orden:** la 3.12 se implementó junto con la 3.8 (y no después de la 3.10) porque la 3.8 **depende** de ella: "confirmación escrita al importar" necesita el diálogo de palabra escrita que define la 3.12. Se respetó así la regla "si una dependencia detecta que falta algo, agregalo y documentalo". La 3.10 queda como siguiente pendiente.
+- Respaldo automático con **rotación FIFO de 7**: uno por sesión cada 24 h y uno al cerrar la pestaña si hubo cambios (bandera `_datosModificados`).
+- Estimación de capacidad de `localStorage` + **banner persistente al 80 %**.
+- Tarjeta "Respaldos automáticos" en Configuración: listar, restaurar, eliminar, crear.
+- `construirPayloadBackup` / `aplicarPayloadBackup` como única fuente del formato; exportación `respaldo_equipos_*.json`.
+- Importación con conteos y confirmación escrita; snapshot de seguridad previo.
+- **Decisión:** límite de `localStorage` asumido en ~5 MB (no hay API estándar). **Pruebas:** G-01…G-04, G-07, D-B03a/b.
 
-**Implementado:**
-- **`confirmarConPalabra({ title, message, palabra, confirmText })`**: diálogo modal con un campo de texto; el botón de confirmar permanece **deshabilitado** hasta que el texto coincide **exactamente** con la palabra. Banner de advertencia rojo, botón en color de peligro.
-- Aplicado a las acciones críticas e irreversibles existentes:
-  - **Restaurar respaldo** (JSON y snapshot automático) → palabra `IMPORTAR` / `RESTAURAR`.
-  - **Borrar todos los datos** → palabra `ELIMINAR`.
-- **Eliminar un respaldo automático** usa confirmación simple (`UI.dialog`), según la 3.12 (la palabra escrita se reserva para las acciones críticas).
+## 3.10 — Historial de cambios ✅
 
-**Decisiones tomadas:**
-- Los otros objetivos que la 3.12 menciona (eliminar equipo, eliminar pendiente, eliminar vista guardada de filtros) **no tienen flujo de borrado en la herramienta actual**; se conectarán a `confirmarConPalabra` / `UI.dialog` cuando esas funcionalidades se construyan (3.2 vistas guardadas, etc.).
+- Slice `STATE.cambios`; `registrarCambio()` registra cambios campo-a-campo.
+- Se capturan: cambios de la importación del maestro (campos y grilla), altas de equipo y ediciones manuales de grilla.
+- Vista nueva **"Actividad reciente"** (menú) con filtros por equipo, campo y rango de fechas; pestaña **"Cambios"** en la ficha.
+- **Decisión:** registra desde el momento de implementación; no reconstruye historia previa (regla 10 del prompt). **Pruebas:** H-01…H-05.
 
-**Pruebas que pasan:** `G-05` (botón bloqueado hasta escribir la palabra), `G-06` (importBackup y "borrar datos" usan confirmación escrita).
+## 3.12 — Confirmación antes de borrar ✅
+
+- `confirmarConPalabra()`: el botón de confirmar se habilita solo al escribir la palabra exacta.
+- Aplicado a "Restaurar respaldo" (`IMPORTAR`/`RESTAURAR`) y "Borrar todos los datos" (`ELIMINAR`). Eliminar respaldo/pendiente/vista usa confirmación simple. **Pruebas:** G-05, G-06.
+
+## 3.11 — Búsqueda libre ✅
+
+- Caja de búsqueda **siempre visible en el header**; atajo `/`; el command palette queda en el ícono de comandos (Ctrl+K).
+- `buscarLibre()`: serie, inventario, nombre, modelo, marca, responsable, servicio, observaciones y texto de eventos; indica el campo donde coincide.
+- Resultados en vivo (debounce 200 ms), dropdown de 10, navegación por teclado, Enter abre el listado filtrado. **Pruebas:** I-01…I-06.
+
+## 3.2 — Filtros simples y combinables ✅
+
+- Los filtros combinables del Inventario ya existían; se agregaron las **vistas guardadas por el usuario** (guardar combinación de filtros+columnas, renombrar, eliminar, aplicar) en el popover "Vistas rápidas".
+- Conteo de resultados como **"Mostrando X de Y equipos"**. **Pruebas:** J-01…J-04.
+
+## 3.1 — Exportación filtrada a Excel ✅
+
+- Modal previo con **propósito** y **destinatario**; hoja **"Metadata"** (fecha, archivo, conteo, propósito, destinatario, filtros legibles).
+- **Registro de exportaciones** (`STATE.exportaciones`) + sección "Historial de exportaciones" en Reportes; aviso ante resultado vacío. **Pruebas:** K-01…K-04.
+
+## 3.3 — Trazabilidad por equipo ✅
+
+- La línea de tiempo de eventos ya existía; se agregó el botón **"Agregar comentario"**: la nota libre queda como evento `COMENTARIO` con autor. **Pruebas:** L-01…L-03.
+
+## 3.4 — Pendientes y recordatorios ✅
+
+- Campo de **hora** opcional en el recordatorio (`isoFromDateTime`).
+- Acción **"Posponer"** (snooze) con opciones rápidas o fecha personalizada.
+- Acción **"Eliminar"** pendiente con confirmación; limpia referencias en equipos. **Pruebas:** M-01…M-04.
+
+## 3.5 — Alertas automáticas ✅
+
+- Reglas configurables: estado >N días, sin actualización >N días, pendiente vencido, pendiente por vencer.
+- **Ícono de campana** en el topbar con conteo; **centro de alertas** (panel lateral) ordenado por prioridad con Ver / Reconocer / Resolver.
+- Estado de cada alerta persistido (`STATE.alertasEstado`); tarjeta de configuración en Configuración.
+- **Decisión:** la regla "mantención preventiva próxima" se cubre con la vista PMP (cumplimiento del mes) y no se duplicó como alerta para no saturar el badge. **Pruebas:** N-01…N-06.
+
+## 3.7 — Conciliación contra archivo maestro ✅
+
+- La importación del maestro con detección de diferencias ya era una conciliación; se agregó **soporte de archivos `.csv`** y el **historial de conciliaciones** (`STATE.conciliaciones`) con sección en Reportes. **Pruebas:** O-01…O-04.
+
+## 3.6 — Informe mensual de preventivas ✅
+
+- `exportInformeMensualMulti`: **una hoja Excel por servicio** + hoja **"Resumen"** (totales por servicio y conteo por resultado).
+- Selección de un servicio o "Todos"; mes por defecto = mes anterior. **Pruebas:** P-01…P-03.
+
+## 3.9 — Dashboard ✅
+
+- Sección **"Atajos rápidos"**; KPI **"Alertas activas"** que abre el centro.
+- **Medición de render** con `performance.now()`: se informa en consola y se advierte si supera 1 s.
+- **Medición observada:** con el dataset de 60 equipos el render del dashboard tarda **~15–60 ms**. La instrumentación queda activa para verificar el objetivo "<1 s con 1000+ equipos" sobre la base real. **Pruebas:** Q-01…Q-03.
 
 ---
 
-## Preparado para 3.10 (no implementado aún)
+## Migración de datos existentes
 
-Se agregó la slice de datos **`STATE.cambios`** (log de cambios campo-a-campo), persistida e incluida en el respaldo. Está vacía hasta que se implemente la 3.10; su valor por defecto (array vacío) es exactamente la estrategia de migración indicada por el prompt para registros existentes.
+Las funcionalidades que introdujeron slices nuevas (`cambios`, `exportaciones`, `alertasEstado`, `conciliaciones`) las inicializan como **arrays/objetos vacíos** para los datos existentes — no se pide al usuario llenar nada retroactivamente. Todas se incluyen en el respaldo (`construirPayloadBackup`).
 
----
+## Checkpoint Fase 3
 
-## Pendiente (10 de 12 funcionalidades) — orden y estado
-
-| # orden | Func. | Estado actual en la herramienta (de 0.2) | Trabajo pendiente |
-|---|---|---|---|
-| 2 | 3.10 Historial de cambios | Parcial — existe el timeline de eventos por equipo. | Log campo-a-campo + vista global "Actividad reciente". |
-| 4 | 3.11 Búsqueda libre | Parcial — command palette `Ctrl+K`. | Caja siempre visible en el header + atajo `/`. |
-| 5 | 3.2 Filtros combinables | **Existe** y es extenso. | Vistas guardadas por el usuario (nombrar/editar/eliminar). |
-| 6 | 3.1 Exportación filtrada | **Existe**. | Hoja "Metadata" (propósito/destinatario) + log de exportaciones. |
-| 7 | 3.3 Trazabilidad | **Existe** (timeline). | Comentario manual como evento; eventos de exportación/conciliación. |
-| 8 | 3.4 Pendientes y recordatorios | **Existe** y es completo. | Hora de recordatorio; "posponer/snooze" explícito. |
-| 9 | 3.5 Alertas automáticas | Parcial. | Centro de alertas con campana en el header; reglas configurables. |
-| 10 | 3.7 Conciliación maestro | **Existe** (import + diferencias). | Aceptar `.csv`; historial de conciliaciones formal. |
-| 11 | 3.6 Informe mensual | **Existe**. | Una hoja Excel por servicio + hoja resumen. |
-| 12 | 3.9 Dashboard | **Existe** y es completo. | Medir render <1 s; sección de atajos rápidos. |
-
-Cada una se abordará como **enriquecimiento incremental**, extendiendo el contrato funcional con sus casos de prueba antes de implementar (procedimiento 3.0 del prompt).
+- [x] Las 12 funcionalidades implementadas, cada una con sus pruebas pasando.
+- [x] Sin regresiones en el contrato funcional original (84/84 en el arnés).
+- [x] Contrato funcional extendido con los casos de prueba de cada funcionalidad (grupos G–Q).

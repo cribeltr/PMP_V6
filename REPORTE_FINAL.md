@@ -7,85 +7,86 @@
 
 ## Estado del proyecto
 
-| Fase | Estado | Verificación |
+| Fase | Estado | Reporte |
 |---|---|---|
-| **Fase 0** — Auditoría y contrato funcional | ✅ Completa | `FASE_0_REPORTE.md`, `pruebas/contrato_funcional.md`, `dataset_pruebas.json` |
-| **Fase 1** — Correcciones quirúrgicas | ✅ Completa | 8 hallazgos corregidos · `FASE_1_REPORTE.md` |
+| **Fase 0** — Auditoría y contrato funcional | ✅ Completa | `FASE_0_REPORTE.md` |
+| **Fase 1** — Correcciones quirúrgicas | ✅ Completa — 8 hallazgos corregidos | `FASE_1_REPORTE.md` |
 | **Fase 2** — Reorganización y rediseño UX/UI | ✅ Completa | `FASE_2_REPORTE.md` |
-| **Fase 3** — Expansión funcional | 🟡 Parcial — **2 de 12** funcionalidades (3.8 y 3.12) | `FASE_3_AVANCE.md` |
+| **Fase 3** — Expansión funcional | ✅ Completa — **12 de 12** funcionalidades | `FASE_3_AVANCE.md` |
 
-**Arnés de pruebas automatizado:** `pruebas/run_pruebas.js` (jsdom) — **41/41 PASA · 0 regresiones** en la última ejecución (`pruebas/resultados_finales.md`).
-
-> **Transparencia sobre el alcance:** este documento de requerimientos describe un proyecto de gran envergadura (auditoría + rediseño completo + 12 funcionalidades nuevas sobre una aplicación de 9.227 líneas). En esta iteración se completaron las Fases 0, 1 y 2 íntegras y se inició la Fase 3 con las 2 funcionalidades fundacionales de seguridad de datos. Las 10 funcionalidades restantes de Fase 3 están **planificadas, priorizadas y documentadas** (ver `FASE_3_AVANCE.md`) para continuar en una próxima iteración, manteniendo el mismo método: extender el contrato funcional, implementar, verificar con el arnés, no romper nada.
+**Arnés de pruebas automatizado:** `pruebas/run_pruebas.js` (jsdom) — **84/84 PASA · 0 regresiones** en la última ejecución.
 
 ---
 
-## 1. Resumen ejecutivo de qué se hizo
+## 1. Resumen ejecutivo
 
-**Hallazgo de fondo (Fase 0):** la herramienta no era "solo un registrador" — ya es una aplicación de gestión madura (revisión 10) con dashboard, inventario configurable, ciclos correctivos, pendientes, importación de maestro Excel con detección de diferencias, reportes y más. La mayoría de las funcionalidades pedidas para Fase 3 **ya existen parcialmente**. Esto cambió el enfoque de Fase 3 de "construir desde cero" a "**enriquecer lo existente sin romperlo**".
+La herramienta entregada no era un simple registrador: ya era una aplicación de gestión madura (revisión 10). La auditoría de Fase 0 lo confirmó y reorientó el trabajo: en lugar de reconstruir, se **corrigió, rediseñó y enriqueció** lo existente, respetando la regla "no romper nada".
 
-- **Fase 0:** auditoría exhaustiva — 22 hallazgos de código (1 crítico, 2 altos, 9 medios, 10 bajos) + 2 de rendimiento; inventario de 9 vistas y sus modales; auditoría UX y estructural; inventario de parámetros del dominio; contrato funcional de 78 casos; dataset de prueba de 60 equipos; arnés automatizado con jsdom.
-- **Fase 1:** corregidos 8 hallazgos reales — entre ellos el **crítico** (vinculación de causal C2 rota de extremo a extremo) y dos **altos** (vinculación C3 frágil; respaldo JSON que perdía datos). 8 casos del contrato pasaron de FALLA a PASA, sin una sola regresión.
-- **Fase 2:** accesibilidad (labels asociados, navegación por teclado, contraste WCAG AA), navegación móvil (la sidebar desaparecía sin reemplazo), sidebar agrupada, sistema de diseño con tokens, limpieza de código muerto.
-- **Fase 3 (parcial):** **3.8** respaldo automático con rotación + alerta de capacidad; **3.12** confirmación con palabra escrita para acciones críticas.
+- **Fase 0** — Auditoría exhaustiva: 22 hallazgos de código (1 crítico, 2 altos, 9 medios, 10 bajos) + 2 de rendimiento; inventario de 9 vistas; auditoría UX/estructural; parámetros del dominio; contrato funcional de 78 casos; dataset de prueba de 60 equipos; arnés automatizado con jsdom.
+- **Fase 1** — 8 correcciones quirúrgicas, incluido el bug **crítico** (vinculación de causal C2 rota de extremo a extremo) y dos **altos**. 8 casos del contrato pasaron de FALLA a PASA, **0 regresiones**.
+- **Fase 2** — Accesibilidad (labels asociados, navegación por teclado, contraste WCAG AA), navegación móvil (la sidebar desaparecía sin reemplazo), sidebar agrupada, tokens de diseño, limpieza de código muerto.
+- **Fase 3** — **Las 12 funcionalidades** implementadas como enriquecimiento de lo existente: respaldo automático, historial de cambios, confirmación escrita, búsqueda libre en el header, vistas de filtros guardadas, exportación con metadata, comentarios de trazabilidad, recordatorios con hora/snooze, centro de alertas, conciliación con CSV e historial, informe mensual con hoja por servicio, y dashboard con atajos y medición de rendimiento.
 
 ---
 
 ## 2. Tabla final del contrato funcional
 
-Casos que en la línea base de **Fase 0** daban **FALLA** y su estado **final**:
+Casos que en la línea base de **Fase 0** daban **FALLA** y su estado final:
 
-| Caso | Hallazgo | Fase 0 (inicial) | Estado final | Cómo se verifica |
-|---|---|---|---|---|
-| CF-VINC-03 | B-02 | FALLA | **PASA** | C-B02 |
-| CF-VINC-04 | B-01 | FALLA | **PASA** | C-B01 |
-| CF-VINC-05 | B-01 | FALLA | **PASA** | C-B01 / D-B01src |
-| CF-VINC-07 | B-04 | FALLA | **PASA** | C-B04 |
-| CF-PMP-04 | B-06 | FALLA | **PASA** | D-B06 |
-| CF-MAE-06 | B-07 | FALLA | **PASA** | D-B07 |
-| CF-REP-05 | B-08 | FALLA | **PASA** | D-B08 |
-| CF-CFG-04 | B-03 | FALLA | **PASA** | D-B03a/b |
-| CF-CFG-05 | B-05 | FALLA | FALLA (postergado — ver §3) | — |
+| Caso | Hallazgo | Fase 0 (inicial) | Estado final |
+|---|---|---|---|
+| CF-VINC-03 | B-02 | FALLA | **PASA** |
+| CF-VINC-04 | B-01 | FALLA | **PASA** |
+| CF-VINC-05 | B-01 | FALLA | **PASA** |
+| CF-VINC-07 | B-04 | FALLA | **PASA** |
+| CF-PMP-04 | B-06 | FALLA | **PASA** |
+| CF-MAE-06 | B-07 | FALLA | **PASA** |
+| CF-REP-05 | B-08 | FALLA | **PASA** |
+| CF-CFG-04 | B-03 | FALLA | **PASA** |
+| CF-CFG-05 | B-05 | FALLA | FALLA (postergado — ver §3) |
 
-Los **71 casos** que en Fase 0 daban PASA siguen en PASA (el arnés re-renderiza las 9 vistas sin excepción y ejercita la lógica de dominio en cada cierre de fase). Resultado: **8 de 9 fallas iniciales corregidas, 0 regresiones**. El arnés automatizado suma 41 aserciones, todas en verde.
+Los **71 casos** que en Fase 0 daban PASA siguen en PASA. El arnés automatizado verifica además, en cada cierre de fase, el render sin excepción de las 10 vistas y la lógica de dominio. **8 de 9 fallas iniciales corregidas, 0 regresiones.** Arnés: **84/84 PASA**.
 
 ---
 
-## 3. Mejoras opcionales pendientes (heredadas de Fase 1)
+## 3. Mejoras opcionales pendientes
 
-Para decidir si se aplican en una iteración futura:
+Heredadas de Fase 1, para una iteración futura si se decide:
 
 | ID | Tema | Severidad |
 |---|---|---|
-| B-05 | "Técnicos oficiales" en Configuración no afecta los dropdowns (requiere decidir fuente de verdad única). | Media |
-| B-10/B-11 | Accesibilidad — *aplicado parcialmente en Fase 2* (faltan filas de tabla por teclado). | Media |
-| B-12 | Aviso de cambios sin guardar (`beforeunload`) — mitigado en parte por el respaldo automático al cerrar (3.8). | Media |
-| B-13 | Monitoreo de capacidad de almacenamiento — **resuelto por 3.8**. | — |
-| B-16 | Funciones redundantes (unificación). | Baja |
+| B-05 | "Técnicos oficiales" en Configuración no afecta los dropdowns (requiere decidir una fuente de verdad única: constante vs. lista editable). | Media |
+| B-11 | Accesibilidad por teclado en filas de tabla (la navegación principal —sidebar, KPIs, pestañas— sí se resolvió en Fase 2). | Media |
+| B-12 | Aviso `beforeunload` de formularios sin guardar (el respaldo automático al cerrar, 3.8, mitiga la pérdida de datos persistidos). | Media |
+| B-16 | Funciones redundantes (`EQ.ciclosAbiertos`/`CICLO.todosAbiertos`). | Baja |
 | B-17 | Fechas futuras permitidas en Registrar MP. | Baja |
 | B-18 | `IntersectionObserver` sin desconectar. | Baja |
 | B-19 | Sin `maxlength` en textareas. | Baja |
-| B-20 | Orden de Historial por `b.fecha`. | Baja |
-| B-21 | Estilos inline en JS (migración a tokens de diseño). | Baja |
+| B-20 | Orden de Historial MP por `b.fecha`. | Baja |
+| B-21 | Estilos inline en JS — migración a los tokens de diseño definidos en Fase 2. | Baja |
 | B-22 | Shadowing de `opts` en `abrirModalVinculacionC3`. | Baja |
-| P-01/P-02 | Rendimiento — medir en 3.9. | Baja |
+| P-01 | Rendimiento del dashboard medido en ~15–60 ms con 60 equipos; conviene confirmar el objetivo "<1 s" sobre la base real de 1000+ equipos (la instrumentación ya está activa). | Baja |
+
+Resueltas durante el proyecto: B-13 (capacidad de almacenamiento → 3.8); B-10 y gran parte de B-11 (accesibilidad → Fase 2); B-14, B-15 (código muerto → Fase 2).
 
 ---
 
 ## 4. Decisiones de diseño tomadas autónomamente
 
-1. **Fase 3 = enriquecer, no reconstruir.** La auditoría mostró que casi todas las funcionalidades de Fase 3 ya existen. Reconstruirlas habría violado "no romper nada" y duplicado código que funciona. Se optó por extender lo existente. *(Reversible: si se prefiere reconstruir alguna funcionalidad desde cero, indicarlo.)*
-2. **Orden de Fase 3:** se implementó 3.8 y luego 3.12 (en vez de 3.10) porque 3.8 depende del diálogo de confirmación escrita que define 3.12. Documentado en `FASE_3_AVANCE.md`. La 3.10 es el siguiente pendiente.
-3. **`matchKey` con clave compuesta de respaldo (B-07):** para equipos sin serie ni inventario se usa `nombre|servicio|marca|modelo`. Evita duplicados al reimportar; podría unir dos equipos realmente homónimos del mismo servicio (caso muy raro). *(Reversible.)*
-4. **Fase 2 conservadora en lo visual:** sin navegador headless no se pueden verificar regresiones visuales; un restyle agresivo a ciegas contradiría "no romper nada". Se priorizaron los cambios verificables (accesibilidad, navegación, estructura) y se definió el sistema de tokens para adopción incremental.
-5. **Límite de `localStorage` asumido en ~5 MB** para la alerta de capacidad (valor típico; no hay API estándar para consultarlo).
-6. **Nombre del archivo de trabajo:** `index.html` (el documento permitía "index.html o el nombre original"). `original_backup.html` conserva el original intacto.
+1. **Fase 3 = enriquecer, no reconstruir.** La auditoría mostró que casi todas las funcionalidades de Fase 3 ya existían parcialmente. Reconstruirlas habría violado "no romper nada". *(Confirmado por el usuario durante el proyecto.)*
+2. **Orden de Fase 3:** la 3.12 se completó junto con la 3.8 porque la 3.8 depende del diálogo de confirmación escrita que define la 3.12.
+3. **`matchKey` con clave compuesta de respaldo (B-07):** para equipos sin serie ni inventario se usa `nombre|servicio|marca|modelo`; evita duplicados al reimportar.
+4. **Fase 2 conservadora en lo visual:** sin navegador headless no se pueden verificar regresiones visuales; se priorizaron los cambios estructuralmente verificables y se definió un sistema de tokens para adopción incremental.
+5. **Límite de `localStorage` asumido en ~5 MB** para la alerta de capacidad (no hay API estándar).
+6. **Regla de alerta "mantención preventiva próxima" (3.5):** no se duplicó como alerta porque ya está cubierta por el cumplimiento del mes en la vista PMP; así se evita saturar el badge de la campana.
+7. **Archivo de trabajo:** `index.html`; `original_backup.html` conserva el original intacto.
+8. **Capacidades del entorno:** sin navegador headless ni capacidad de capturas; las simulaciones se ejecutaron como arnés jsdom + análisis estático, y el estado visual se describió textualmente (carpetas `snapshots/` vacías).
 
 ---
 
 ## 5. Decisiones tomadas por defecto ante preguntas no respondidas
 
-No se formularon preguntas bloqueantes: la auditoría no encontró ambigüedades de negocio que impidieran avanzar, y las decisiones de alcance/orden se tomaron de forma autónoma y quedaron documentadas en §4. Si se desea revertir alguna, basta indicarlo.
+Durante el proyecto se consultó una vez (prioridad y enfoque de la Fase 3); el usuario respondió "Fase 3 directo" y "enriquecer lo existente", que son las decisiones aplicadas. No hubo otras preguntas bloqueantes. Cualquier decisión de §4 puede revertirse si se indica.
 
 ---
 
@@ -93,19 +94,30 @@ No se formularon preguntas bloqueantes: la auditoría no encontró ambigüedades
 
 | Archivo | Contenido |
 |---|---|
-| `index.html` | Herramienta actualizada y funcional. |
+| `index.html` | Herramienta actualizada y funcional (Fases 0–3). |
 | `original_backup.html` | Copia exacta del HTML original, intacta. |
 | `pre_fase_1_backup.html` · `pre_fase_2_backup.html` · `pre_fase_3_backup.html` | Backups intermedios por fase. |
-| `FASE_0_REPORTE.md` … `FASE_2_REPORTE.md`, `FASE_3_AVANCE.md` | Reportes por fase. |
-| `REPORTE_FINAL.md` | Este documento. |
-| `pruebas/contrato_funcional.md` | Contrato funcional (línea base Fase 0). |
-| `pruebas/run_pruebas.js` | Arnés de pruebas automatizado (jsdom). Ejecutar: `npm install jsdom && node pruebas/run_pruebas.js`. |
-| `pruebas/resultados_finales.md` | Resultado de la última ejecución (41/41). |
+| `FASE_0_REPORTE.md` … `FASE_3_AVANCE.md`, `REPORTE_FINAL.md` | Reportes por fase y final. |
+| `pruebas/contrato_funcional.md` | Contrato funcional: línea base de Fase 0 + extensiones de Fases 1–3. |
+| `pruebas/run_pruebas.js` | Arnés automatizado (jsdom). Ejecutar: `npm install jsdom && node pruebas/run_pruebas.js`. |
+| `pruebas/resultados_finales.md` | Resultado de la última ejecución (84/84). |
 | `pruebas/dataset_pruebas.json` + `generar_dataset.js` | Dataset de prueba determinístico (60 equipos). |
-| `snapshots/before` · `snapshots/after` | Vacías — sin navegador headless para generar capturas (estado visual descrito textualmente en los reportes). |
+| `package.json` · `.gitignore` | Declaración de la dependencia de pruebas. |
+| `snapshots/before` · `snapshots/after` | Vacías — sin navegador headless para capturas; el estado visual se describe en los reportes. |
 
 ---
 
-## 7. Próximos pasos sugeridos
+## 7. Cómo verificar
 
-Continuar la Fase 3 en el orden documentado en `FASE_3_AVANCE.md`, empezando por **3.10 (historial de cambios)** — ya tiene la slice de datos `STATE.cambios` preparada. Cada funcionalidad: extender el contrato funcional con sus casos, implementar enriqueciendo lo existente, verificar con el arnés, confirmar 0 regresiones.
+```
+npm install jsdom
+node pruebas/run_pruebas.js     # 84/84 PASA esperado
+```
+
+Para usar la herramienta: abrir `index.html` en un navegador. Para probar con datos: Configuración → "Restaurar respaldo" → `pruebas/dataset_pruebas.json` (en un navegador limpio o tras descargar un respaldo propio).
+
+---
+
+## 8. Recomendación de cierre
+
+El proyecto completó las cuatro fases. Las mejoras pendientes de §3 son todas de severidad baja o media y opcionales. La instrumentación de rendimiento del dashboard (3.9) permite confirmar el objetivo "<1 s" cuando se cargue la base real. Conviene, en una próxima iteración, resolver B-05 (fuente de verdad de los técnicos) por ser la única falla de contrato que quedó postergada.

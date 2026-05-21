@@ -219,3 +219,30 @@
 - **Comportamiento documentado (no falla formal):** CF-MP-08 (B-17, fecha futura permitida), CF-NAV-05 (B-11, teclado).
 
 > Estos 7+ resultados de FALLA son la **línea base**. Tras Fase 1, cada uno debe pasar a `PASA` (mejora) sin que ningún caso que hoy es `PASA` se rompa (regresión prohibida).
+
+---
+
+# Extensión del contrato — Fases 1, 2 y 3
+
+Las fases posteriores **no modifican** ningún caso anterior; **extienden** el contrato con casos nuevos para funcionalidad nueva o corregida. Estos casos son **ejecutables**: están implementados como aserciones en el arnés automatizado `pruebas/run_pruebas.js`, que se corre en cada cierre de fase. El resultado de la última ejecución está en `pruebas/resultados_finales.md`.
+
+| Grupo en el arnés | Fase / funcionalidad | Casos |
+|---|---|---|
+| A | Arranque y carga de datos | A-01…A-03 |
+| B | Lógica de dominio (MP, ciclo v34) | B-MP-01, B-CIC-01…03 |
+| C, D | Fase 1 — correcciones B-01…B-09 | C-B01/02/04/09, D-B01src/B02src/B03a/B03b/B06/B07/B08 |
+| E | No regresión — render de las 10 vistas | E-dash … E-config |
+| F | Fase 2 — accesibilidad, navegación, limpieza | F-01…F-07 |
+| G | Fase 3.8 respaldo automático + 3.12 confirmación escrita | G-01…G-07 |
+| H | Fase 3.10 historial de cambios | H-01…H-05 |
+| I | Fase 3.11 búsqueda libre | I-01…I-06 |
+| J | Fase 3.2 vistas de filtros guardadas | J-01…J-04 |
+| K | Fase 3.1 exportación filtrada con metadata | K-01…K-04 |
+| L | Fase 3.3 trazabilidad (comentario manual) | L-01…L-03 |
+| M | Fase 3.4 recordatorios (hora, posponer, eliminar) | M-01…M-04 |
+| N | Fase 3.5 centro de alertas | N-01…N-06 |
+| O | Fase 3.7 conciliación (CSV + historial) | O-01…O-04 |
+| P | Fase 3.6 informe mensual por servicio | P-01…P-03 |
+| Q | Fase 3.9 dashboard (atajos + medición) | Q-01…Q-03 |
+
+**Última ejecución: 84/84 PASA, 0 regresiones.** Los 78 casos manuales de la línea base de Fase 0 siguen vigentes; el grupo E del arnés verifica de forma automatizada que las vistas no se rompan.
