@@ -164,7 +164,7 @@
 :root[data-theme="dark"] body {
   background:
     radial-gradient(1200px 600px at 0% 0%, rgba(10,110,199,.06), transparent 60%),
-    var(--paper);
+    var(--bg-app);
 }
 
 /* ============================================================
@@ -174,15 +174,17 @@
 html, body { height: 100%; }
 body {
   margin: 0;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-sans);
   font-size: 13px;
   font-weight: 400;
   line-height: 1.5;
-  color: var(--ink);
-  background: var(--paper);
+  color: var(--text-primary);
+  background: var(--bg-app);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
+/* FASE 2.5: tracking ligeramente reducido en titulares grandes. */
+h1, h2 { letter-spacing: -.01em; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { background: none; border: 0; padding: 0; cursor: pointer; }
 a { color: inherit; text-decoration: none; }
@@ -528,11 +530,14 @@ hr { border: 0; border-top: .5px solid var(--line); margin: 0; }
    CARDS
    ============================================================ */
 .card {
-  background: var(--paper);
-  border: .5px solid var(--line);
-  border-radius: var(--r-lg);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
   padding: 16px;
+  transition: box-shadow 160ms ease-out;
 }
+.card:hover { box-shadow: var(--shadow-md); }
 .card-h {
   display: flex;
   align-items: center;
@@ -549,14 +554,15 @@ hr { border: 0; border-top: .5px solid var(--line); margin: 0; }
 }
 .kpi {
   padding: 14px 16px;
-  border: .5px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--paper);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-sm);
   display: flex; flex-direction: column; gap: 4px;
   cursor: pointer;
-  transition: background 80ms ease, border-color 80ms ease;
+  transition: box-shadow 160ms ease-out, border-color 160ms ease-out;
 }
-.kpi:hover { background: var(--paper-2); border-color: var(--line-2); }
+.kpi:hover { box-shadow: var(--shadow-md); border-color: var(--line-2); }
 .kpi .label { font-size: 11px; color: var(--ink-3); letter-spacing: .02em; text-transform: uppercase; }
 .kpi .value { font-size: 24px; font-weight: 500; letter-spacing: -.02em; line-height: 1.1; }
 .kpi .trend { font-size: 11px; color: var(--ink-3); }
@@ -572,9 +578,10 @@ hr { border: 0; border-top: .5px solid var(--line); margin: 0; }
 .table-wrap {
   /* AJUSTE R8 F.1: scroll horizontal cuando hay muchas columnas (p. ej. Inventario con
      las 18 columnas activas). Antes era overflow:hidden y bloqueaba el scroll. */
-  border: .5px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--paper);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-sm);
   overflow-x: auto;
   overflow-y: visible;
   /* AJUSTE R9 B.1: se eliminó el fade gradient compuesto de R8 F.2 (Opción 2 del prompt).
