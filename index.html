@@ -554,6 +554,17 @@ hr { border: 0; border-top: .5px solid var(--line); margin: 0; }
 .card-h h3 { font-size: 13px; font-weight: 500; }
 .card-h .sub { color: var(--ink-3); font-size: 11.5px; }
 
+/* FASE 2.5 · utilidad — rótulo en mayúsculas (reemplaza un estilo inline
+   repetido en ~9 lugares del JS; usa tokens de color y tipografía). */
+.eyebrow {
+  font-size: var(--fs-sm);
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
@@ -5835,7 +5846,7 @@ function abrirModalBienvenida() {
       body.appendChild(maestroCard);
 
       // KPIs
-      body.appendChild(h('div', { style:{fontSize:'12px', color:'var(--ink-3)', textTransform:'uppercase', letterSpacing:'.04em', marginBottom:'6px', fontWeight:500} }, 'Resumen del día'));
+      body.appendChild(h('div', { class:'eyebrow' }, 'Resumen del día'));
       body.appendChild(h('div.kpi-grid', { style:{marginBottom:'14px'} }, [
         kpiCard({ label:'Mis pendientes hoy', value: fmt.number(misHoy), kind: misHoy ? 'warning' : 'muted', onclick: () => { cerrarBienvenida(); UI_PEND.filtros = { estado:'', asignado: yo, desde:'', hasta: new Date().toISOString().slice(0,10) }; Router.go('tareas'); } }),
         kpiCard({ label:'Pendientes vencidos', value: fmt.number(vencidos), kind: vencidos ? 'danger' : 'muted', onclick: () => { cerrarBienvenida(); UI_PEND.filtros = { estado:'', asignado:'', desde:'', hasta: new Date().toISOString().slice(0,10) }; Router.go('tareas'); } }),
@@ -5845,7 +5856,7 @@ function abrirModalBienvenida() {
 
       // Recordatorios
       if (sinAsignar || recepNoReparados.length || solicSinAvance) {
-        body.appendChild(h('div', { style:{fontSize:'12px', color:'var(--ink-3)', textTransform:'uppercase', letterSpacing:'.04em', marginBottom:'6px', fontWeight:500} }, 'Recordatorios'));
+        body.appendChild(h('div', { class:'eyebrow' }, 'Recordatorios'));
         const items = h('ul', { style:{margin:'0 0 12px 0', paddingLeft:'18px', fontSize:'12.5px'} });
         if (sinAsignar) items.appendChild(h('li', { style:{cursor:'pointer', color:'var(--warning)'}, onclick: () => { cerrarBienvenida(); UI_PEND.filtros = { estado:'', asignado:'__SIN_ASIGNAR__', desde:'', hasta:'' }; Router.go('tareas'); } }, `⚠ ${sinAsignar} pendiente${sinAsignar>1?'s':''} sin responsable asignado`));
         if (recepNoReparados.length) {
@@ -6231,7 +6242,7 @@ const REC = (() => {
     if (active) {
       wrap.appendChild(h('button.btn.sm.danger', { onclick: () => stop(), title:'Detener grabación' }, [
         h('span', { id:'recDot', style:{ display:'inline-flex', alignItems:'center', gap:'6px' } }, [
-          h('span', { style:{width:'8px', height:'8px', borderRadius:'50%', background:'#dc2626', display:'inline-block', animation:'pulseDot 1.4s ease-in-out infinite'} }),
+          h('span', { style:{width:'8px', height:'8px', borderRadius:'50%', background:'var(--danger)', display:'inline-block', animation:'pulseDot 1.4s ease-in-out infinite'} }),
           `REC · ${events.length}`,
         ]),
         h('i.ti.ti-player-stop', { style:{marginLeft:'6px'} }),
@@ -6395,7 +6406,7 @@ VIEWS.dash = {
     }
 
     // === Fila 1 — KPIs operativos ===
-    root.appendChild(h('div', { style:{fontSize:'11.5px', color:'var(--ink-3)', textTransform:'uppercase', letterSpacing:'.04em', marginBottom:'8px', fontWeight:500} }, 'Estado operacional'));
+    root.appendChild(h('div', { class:'eyebrow' }, 'Estado operacional'));
     const kpis = h('div.kpi-grid', { style:{marginBottom:'18px'} });
     kpis.appendChild(kpiCard({ label: `Operativos / ${fmt.number(total)}`, value: `${fmt.number(byEst.Operativo||0)} · ${pctOper}%`, kind: pctOper >= 80 ? 'success' : pctOper >= 50 ? 'warning' : 'danger', onclick: () => Router.go('inv', { estado: 'Operativo' }) }));
     /* AJUSTE R8 C: label engloba los 3 estados que suma noOpTotal; onclick usa el preset
@@ -6410,7 +6421,7 @@ VIEWS.dash = {
     root.appendChild(kpis);
 
     // === Fila 2 — Atenciones críticas ===
-    root.appendChild(h('div', { style:{fontSize:'11.5px', color:'var(--ink-3)', textTransform:'uppercase', letterSpacing:'.04em', marginBottom:'8px', fontWeight:500} }, 'Atenciones críticas'));
+    root.appendChild(h('div', { class:'eyebrow' }, 'Atenciones críticas'));
     const equiposCritico30 = STATE.equipos
       .filter(e => ESTADOS_NO_OPERATIVOS.includes(e.estado) && e.estadoDesde && diasEnEstadoActual(e) > 30)
       .sort((a,b) => diasEnEstadoActual(b) - diasEnEstadoActual(a))
@@ -6498,7 +6509,7 @@ VIEWS.dash = {
     root.appendChild(atencionesGrid);
 
     // === Fila 3 — Estado del parque ===
-    root.appendChild(h('div', { style:{fontSize:'11.5px', color:'var(--ink-3)', textTransform:'uppercase', letterSpacing:'.04em', marginBottom:'8px', fontWeight:500} }, 'Distribución del parque'));
+    root.appendChild(h('div', { class:'eyebrow' }, 'Distribución del parque'));
     const distGrid = h('div', { style:{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px', marginBottom:'18px'} });
     // Por estado
     distGrid.appendChild((() => {
@@ -6615,7 +6626,7 @@ VIEWS.dash = {
     root.appendChild(sec);
 
     // === FASE 3.9 — Atajos rápidos ===
-    root.appendChild(h('div', { style:{fontSize:'11.5px', color:'var(--ink-3)', textTransform:'uppercase', letterSpacing:'.04em', margin:'8px 0', fontWeight:500} }, 'Atajos rápidos'));
+    root.appendChild(h('div', { class:'eyebrow' }, 'Atajos rápidos'));
     const atajos = [
       { label:'Importar / conciliar maestro', icon:'ti-file-spreadsheet', onclick: handleImportMaestro },
       { label:'Informe mensual', icon:'ti-report', onclick: () => Router.go('reportes') },
@@ -7026,7 +7037,7 @@ VIEWS.inv = {
 
 function abrirPopoverColumnas(anchor, onChange) {
   UI.popover(anchor, { width: 280, render: (body, { close }) => {
-    body.appendChild(h('div', { style:{fontSize:'12px', color:'var(--ink-3)', textTransform:'uppercase', letterSpacing:'.04em', marginBottom:'8px', fontWeight:500} }, 'Mostrar columnas'));
+    body.appendChild(h('div', { class:'eyebrow' }, 'Mostrar columnas'));
     const visibles = new Set(invColumnasVisibles());
     INV_COLUMNAS.forEach(col => {
       const lbl = h('label', { style:{display:'flex', alignItems:'center', gap:'8px', padding:'4px 0', cursor:'pointer', fontSize:'13px'} }, [
@@ -9050,7 +9061,7 @@ function renderPendienteExpandido(p, refresh) {
 
   // === Subtareas ===
   const subSec = h('div');
-  subSec.appendChild(h('div', { style:{fontSize:'12px', color:'var(--ink-3)', textTransform:'uppercase', letterSpacing:'.04em', marginBottom:'6px', fontWeight:500} }, `Subtareas (${(p.subtareas||[]).length})`));
+  subSec.appendChild(h('div', { class:'eyebrow' }, `Subtareas (${(p.subtareas||[]).length})`));
   const subList = h('div', { style:{display:'flex', flexDirection:'column', gap:'4px', marginBottom:'8px'} });
   (p.subtareas || []).forEach(s => {
     const item = h('div', { style:{display:'flex', alignItems:'center', gap:'8px', fontSize:'12.5px'} }, [
@@ -9089,7 +9100,7 @@ function renderPendienteExpandido(p, refresh) {
 
   // === Log / notas ===
   const logSec = h('div');
-  logSec.appendChild(h('div', { style:{fontSize:'12px', color:'var(--ink-3)', textTransform:'uppercase', letterSpacing:'.04em', marginBottom:'6px', fontWeight:500} }, `Notas y log (${(p.log||[]).length})`));
+  logSec.appendChild(h('div', { class:'eyebrow' }, `Notas y log (${(p.log||[]).length})`));
   // Form para agregar nota
   const notaInput = textareaCtl({ rows:2, placeholder:'Agregar nota al log (Ctrl+Enter para guardar)…' });
   const notaBtn = h('button.btn.sm', {
