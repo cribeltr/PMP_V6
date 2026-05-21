@@ -1,0 +1,13 @@
+{
+  "name": "pmp-sec-hhha",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Herramienta PMP/SEC (HHHA Temuco) — la app es index.html standalone. Este package.json solo declara la dependencia del arnés de pruebas.",
+  "scripts": {
+    "test": "node pruebas/run_pruebas.js",
+    "dataset": "node pruebas/generar_dataset.js"
+  },
+  "devDependencies": {
+    "jsdom": "^24.0.0"
+  }
+}
