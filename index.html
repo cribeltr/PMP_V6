@@ -1377,6 +1377,7 @@ const STATE = {
   meta: {},
   tecnicosOficiales: [],   // lista gestionada por el usuario (no proviene del maestro)
   diffIgnorados: {},       // { 'uuid:tipo:valor': true } — diferencias dejadas pasar en imports previos
+  cambios: [],             // FASE 3.10 — log de cambios campo-a-campo de equipos
   view: 'dash',
   viewParams: {},
 };
@@ -1403,6 +1404,7 @@ function loadState() {
   STATE.meta              = STORAGE.read('meta', { schemaVersion: SCHEMA_VERSION, appVersion: APP_VERSION }) || {};
   STATE.tecnicosOficiales = STORAGE.read('tecnicosOficiales', []) || [];
   STATE.diffIgnorados     = STORAGE.read('diffIgnorados', {}) || {};
+  STATE.cambios           = STORAGE.read('cambios', []) || [];
 }
 
 function persist(slice) {
@@ -1413,6 +1415,9 @@ function persist(slice) {
   if (!slice || slice === 'session')           STORAGE.write('session',           STATE.session);
   if (!slice || slice === 'tecnicosOficiales') STORAGE.write('tecnicosOficiales', STATE.tecnicosOficiales);
   if (!slice || slice === 'diffIgnorados')     STORAGE.write('diffIgnorados',     STATE.diffIgnorados);
+  if (!slice || slice === 'cambios')           STORAGE.write('cambios',           STATE.cambios);
+  // FASE 3.8: marca de datos modificados para el respaldo automático al cerrar.
+  _datosModificados = true;
   bus.emit('state:change', slice);
 }
 
@@ -4191,8 +4196,9 @@ function mergeEquipoInPlace(prev, draft) {
 /* ============================================================
    BACKUP · JSON
    ============================================================ */
-function exportBackup() {
-  const payload = {
+/** Construye el payload completo del respaldo (única fuente de verdad del formato). */
+function construirPayloadBackup() {
+  return {
     appVersion: APP_VERSION,
     schemaVersion: SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
@@ -4201,47 +4207,189 @@ function exportBackup() {
     asignaciones: STATE.asignaciones,
     contactos: STATE.contactos,
     session: STATE.session,
-    // FIX B-03 (Fase 1): el respaldo debe incluir TODAS las slices persistidas.
-    // Antes faltaban estas dos y se perdían al restaurar.
+    // FIX B-03 (Fase 1): el respaldo incluye TODAS las slices persistidas.
     tecnicosOficiales: STATE.tecnicosOficiales,
     diffIgnorados: STATE.diffIgnorados,
+    cambios: STATE.cambios,
   };
-  const json = JSON.stringify(payload, null, 2);
+}
+
+/** Aplica un payload de respaldo sobre el estado (usado por importar y restaurar snapshot). */
+function aplicarPayloadBackup(data) {
+  if (!data || !Array.isArray(data.equipos)) throw new Error('El respaldo no contiene un campo "equipos" válido.');
+  STATE.equipos      = data.equipos.map(normalizeEquipoFromLegacy);
+  STATE.pendientes   = Array.isArray(data.pendientes) ? data.pendientes : [];
+  STATE.asignaciones = data.asignaciones && typeof data.asignaciones === 'object' ? data.asignaciones : {};
+  STATE.contactos    = data.contactos    && typeof data.contactos    === 'object' ? data.contactos    : {};
+  STATE.session      = data.session      && typeof data.session      === 'object' ? data.session      : {};
+  STATE.tecnicosOficiales = Array.isArray(data.tecnicosOficiales) ? data.tecnicosOficiales : [];
+  STATE.diffIgnorados     = data.diffIgnorados && typeof data.diffIgnorados === 'object' ? data.diffIgnorados : {};
+  STATE.cambios           = Array.isArray(data.cambios) ? data.cambios : [];
+  persist();
+}
+
+function exportBackup() {
+  const json = JSON.stringify(construirPayloadBackup(), null, 2);
   const blob = new Blob([json], { type: 'application/json' });
-  const ts = new Date().toISOString().replace(/[:.]/g,'-');
-  const a = h('a', { href: URL.createObjectURL(blob), download: `pmp_backup_${ts}.json` });
+  const ts = new Date().toISOString().slice(0,16).replace(/[:T]/g,'-');
+  const a = h('a', { href: URL.createObjectURL(blob), download: `respaldo_equipos_${ts}.json` });
   document.body.appendChild(a); a.click(); a.remove();
-  UI.toast('Backup descargado.', 'success');
+  UI.toast('Respaldo descargado.', 'success');
 }
 
 async function importBackup() {
   const file = await pickFile('.json');
   if (!file) return;
-  const ok = await UI.dialog({
-    title: 'Restaurar backup',
-    message: `Esto reemplaza todos los datos actuales con el contenido de "${file.name}". ¿Continuamos?`,
-    confirmText: 'Restaurar',
-    variant: 'danger',
+  let data;
+  try {
+    data = JSON.parse(await file.text());
+    if (!Array.isArray(data.equipos)) throw new Error('El archivo no contiene un campo "equipos" válido.');
+  } catch (e) { bus.emit('error', new Error('Respaldo inválido o corrupto: ' + (e.message || e))); return; }
+  // FASE 3.8 / 3.12: advertencia con conteos + confirmación escrita ("IMPORTAR").
+  const ok = await confirmarConPalabra({
+    title: 'Restaurar respaldo',
+    message: `Vas a reemplazar ${fmt.number(STATE.equipos.length)} equipos actuales por ${fmt.number(data.equipos.length)} equipos del respaldo "${file.name}". Esta acción no se puede deshacer.`,
+    palabra: 'IMPORTAR',
+    confirmText: 'Restaurar respaldo',
   });
   if (!ok) return;
   try {
-    const text = await file.text();
-    const data = JSON.parse(text);
-    if (!Array.isArray(data.equipos)) throw new Error('El archivo no contiene un campo "equipos" válido.');
-    STATE.equipos      = data.equipos.map(normalizeEquipoFromLegacy);
-    STATE.pendientes   = Array.isArray(data.pendientes) ? data.pendientes : [];
-    STATE.asignaciones = data.asignaciones && typeof data.asignaciones === 'object' ? data.asignaciones : {};
-    STATE.contactos    = data.contactos    && typeof data.contactos    === 'object' ? data.contactos    : {};
-    STATE.session      = data.session      && typeof data.session      === 'object' ? data.session      : {};
-    // FIX B-03 (Fase 1): restaurar también las slices que antes se perdían.
-    STATE.tecnicosOficiales = Array.isArray(data.tecnicosOficiales) ? data.tecnicosOficiales : [];
-    STATE.diffIgnorados     = data.diffIgnorados && typeof data.diffIgnorados === 'object' ? data.diffIgnorados : {};
-    persist();
-    UI.toast(`Restaurados ${STATE.equipos.length} equipos.`, 'success');
+    guardarAutobackup('pre-restauración');   // red de seguridad antes de sobreescribir
+    aplicarPayloadBackup(data);
+    UI.toast(`Restaurados ${fmt.number(STATE.equipos.length)} equipos desde el respaldo.`, 'success');
     Router.go(STATE.view);
-  } catch (e) {
-    bus.emit('error', e);
-  }
+  } catch (e) { bus.emit('error', e); }
+}
+
+/* ============================================================
+   FASE 3.8 — Respaldo automático, rotación y capacidad
+   FASE 3.12 — Confirmación escrita para acciones críticas
+   ============================================================ */
+const AUTOBACKUP_KEY = 'pmp.v3.autobackups';
+const AUTOBACKUP_MAX = 7;                       // rotación FIFO
+const STORAGE_LIMITE = 5 * 1024 * 1024;         // ~5 MB (límite típico de localStorage)
+let _datosModificados = false;                  // bandera "sucio" — se marca en persist()
+
+function listarAutobackups() {
+  try {
+    const raw = localStorage.getItem(AUTOBACKUP_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch { return []; }
+}
+
+/**
+ * Guarda un snapshot del estado completo en una clave separada del almacén.
+ * Mantiene los últimos AUTOBACKUP_MAX (rotación FIFO). Si no hay espacio,
+ * descarta los más antiguos y reintenta; si aun así falla, lo informa sin
+ * romper el flujo (el respaldo manual es la red de seguridad real).
+ */
+function guardarAutobackup(motivo) {
+  try {
+    const snaps = listarAutobackups();
+    const json = JSON.stringify(construirPayloadBackup());
+    snaps.push({
+      id: uuid(), ts: new Date().toISOString(), motivo: motivo || 'sesión',
+      bytes: json.length * 2, equipos: STATE.equipos.length, data: json,
+    });
+    while (snaps.length > AUTOBACKUP_MAX) snaps.shift();
+    for (let intento = 0; intento < AUTOBACKUP_MAX; intento++) {
+      try { localStorage.setItem(AUTOBACKUP_KEY, JSON.stringify(snaps)); _datosModificados = false; return snaps[snaps.length-1]; }
+      catch { if (snaps.length > 1) snaps.shift(); else break; }
+    }
+    console.warn('[autobackup] sin espacio en localStorage para guardar el snapshot');
+    return null;
+  } catch (e) { console.error('[autobackup]', e); return null; }
+}
+
+function eliminarAutobackup(id) {
+  const snaps = listarAutobackups().filter(s => s.id !== id);
+  try { localStorage.setItem(AUTOBACKUP_KEY, JSON.stringify(snaps)); } catch (e) { console.error(e); }
+}
+
+/** Crea un snapshot automático al arrancar si no hubo uno en las últimas 24 h. */
+function autobackupAlArrancar() {
+  if (!STATE.equipos.length) return;
+  const snaps = listarAutobackups();
+  const ultimo = snaps[snaps.length - 1];
+  const hace24h = !ultimo || (Date.now() - new Date(ultimo.ts).getTime()) > 24 * 3600 * 1000;
+  if (hace24h) guardarAutobackup('sesión');
+}
+
+/** Uso aproximado de localStorage (bytes) y porcentaje sobre el límite estimado. */
+function capacidadStorage() {
+  let chars = 0;
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      chars += k.length + (localStorage.getItem(k) || '').length;
+    }
+  } catch {}
+  const usado = chars * 2; // UTF-16: ~2 bytes por carácter
+  return { usado, limite: STORAGE_LIMITE, pct: Math.min(100, Math.round(usado / STORAGE_LIMITE * 100)) };
+}
+
+/** Banner persistente de capacidad (>=80%). Devuelve un nodo o null. */
+function bannerCapacidad() {
+  const c = capacidadStorage();
+  if (c.pct < 80) return null;
+  return h('div.banner.warning', { style:{ marginBottom:'14px' } }, [
+    h('i.ti.ti-database-exclamation'),
+    h('div.grow', `Almacenamiento al ${c.pct}% (${fmt.bytes(c.usado)} de ~${fmt.bytes(c.limite)}). Descargá un respaldo y limpiá respaldos automáticos antiguos.`),
+    h('button.btn.sm', { onclick: () => Router.go('config') }, [ h('i.ti.ti-arrow-right'), 'Ir a Datos' ]),
+  ]);
+}
+
+/**
+ * FASE 3.12 — Diálogo de confirmación con palabra escrita para acciones
+ * críticas e irreversibles. El botón de confirmar permanece deshabilitado
+ * hasta que el texto coincide exactamente con `palabra`.
+ * @returns Promise<boolean>
+ */
+function confirmarConPalabra({ title, message, palabra, confirmText }) {
+  return new Promise((resolve) => {
+    let btnOk = null;
+    UI.modal({
+      title, size: 'sm', critical: true,
+      content: (b) => {
+        b.appendChild(h('p', { style:{ margin:'0 0 10px', fontSize:'13px', color:'var(--ink-2)' } }, message));
+        b.appendChild(h('div.banner.danger', { style:{ marginBottom:'12px' } }, [
+          h('i.ti.ti-alert-triangle'),
+          h('div.grow', `Para confirmar, escribí exactamente: ${palabra}`),
+        ]));
+        const inp = inputCtl({ placeholder: palabra, autocomplete: 'off' });
+        inp.addEventListener('input', () => { if (btnOk) btnOk.disabled = inp.value.trim() !== palabra; });
+        b.appendChild(field(`Escribí "${palabra}"`, inp));
+      },
+      footer: (f, { close }) => {
+        f.appendChild(h('button.btn.ghost', { onclick: () => { close('cancel'); resolve(false); } }, 'Cancelar'));
+        btnOk = h('button.btn.primary.danger', { onclick: () => { close('confirm'); resolve(true); } }, confirmText || 'Confirmar');
+        btnOk.disabled = true;
+        f.appendChild(btnOk);
+      },
+    });
+  });
+}
+
+/** FASE 3.8 — restaura un snapshot automático (con confirmación). */
+async function restaurarAutobackup(id) {
+  const snap = listarAutobackups().find(s => s.id === id);
+  if (!snap) { bus.emit('error', new Error('Respaldo no encontrado.')); return; }
+  let data;
+  try { data = JSON.parse(snap.data); } catch { bus.emit('error', new Error('El respaldo automático está corrupto.')); return; }
+  const ok = await confirmarConPalabra({
+    title: 'Restaurar respaldo automático',
+    message: `Vas a reemplazar ${fmt.number(STATE.equipos.length)} equipos actuales por ${fmt.number((data.equipos||[]).length)} del respaldo del ${fmt.datetime(snap.ts)}. Esta acción no se puede deshacer.`,
+    palabra: 'RESTAURAR',
+    confirmText: 'Restaurar',
+  });
+  if (!ok) return;
+  try {
+    guardarAutobackup('pre-restauración');
+    aplicarPayloadBackup(data);
+    UI.toast(`Restaurado el respaldo del ${fmt.datetime(snap.ts)}.`, 'success');
+    Router.go(STATE.view);
+  } catch (e) { bus.emit('error', e); }
 }
 
 /* ============================================================
@@ -5714,6 +5862,8 @@ const Router = {
     updateTopbar(view.title, view.sub || '');
     try { view.render(root, params); }
     catch (e) { console.error(e); bus.emit('error', e); }
+    // FASE 3.8: banner persistente de capacidad de almacenamiento (>=80%).
+    try { const bc = bannerCapacidad(); if (bc) root.insertBefore(bc, root.firstChild); } catch {}
   },
 };
 
@@ -8831,6 +8981,63 @@ function abrirDrawerContacto(servicio) {
   });
 }
 
+/** FASE 3.8 — tarjeta "Respaldos automáticos y almacenamiento" para Configuración. */
+function renderCardRespaldos() {
+  const card = h('div.card', { style:{ marginBottom:'14px' } });
+  const cap = capacidadStorage();
+  const snaps = listarAutobackups().slice().reverse();   // más reciente primero
+  card.appendChild(h('div.card-h', [
+    h('h3', 'Respaldos automáticos'),
+    h('span.sub', `${snaps.length} de ${AUTOBACKUP_MAX} · almacenamiento ${cap.pct}%`),
+  ]));
+  card.appendChild(h('p', { style:{ color:'var(--ink-3)', fontSize:'12px', margin:'0 0 10px' } },
+    'Se guarda un respaldo automático por sesión (uno cada 24 h) y otro al cerrar la pestaña si hubo cambios. Se conservan los últimos 7 (rotación FIFO).'));
+  // Barra de capacidad de almacenamiento
+  const barColor = cap.pct >= 80 ? 'var(--danger)' : cap.pct >= 60 ? 'var(--warning)' : 'var(--success)';
+  card.appendChild(h('div', { style:{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'12px', fontSize:'12px' } }, [
+    h('span', { style:{ minWidth:'92px', color:'var(--ink-3)' } }, 'Almacenamiento'),
+    h('div', { style:{ flex:1, height:'8px', background:'var(--paper-3)', borderRadius:'4px', overflow:'hidden' } }, [
+      h('div', { style:{ height:'100%', width: cap.pct + '%', background: barColor } }),
+    ]),
+    h('span', { style:{ minWidth:'130px', textAlign:'right', color:'var(--ink-2)' } }, `${fmt.bytes(cap.usado)} · ${cap.pct}%`),
+  ]));
+  if (!snaps.length) {
+    card.appendChild(h('div', { style:{ color:'var(--ink-4)', fontSize:'12px' } }, 'Aún no hay respaldos automáticos.'));
+  } else {
+    const tbl = h('table.dt');
+    tbl.innerHTML = `<thead><tr><th>Fecha</th><th>Motivo</th><th>Equipos</th><th>Tamaño</th><th></th></tr></thead>`;
+    const tb = h('tbody');
+    snaps.forEach(s => {
+      tb.appendChild(h('tr', [
+        h('td.col-mono', fmt.datetime(s.ts)),
+        h('td', s.motivo || 'sesión'),
+        h('td', fmt.number(s.equipos)),
+        h('td', fmt.bytes(s.bytes || 0)),
+        h('td', h('div', { style:{ display:'flex', gap:'4px', justifyContent:'flex-end' } }, [
+          h('button.btn.sm', { onclick: () => restaurarAutobackup(s.id) }, [ h('i.ti.ti-history'), 'Restaurar' ]),
+          h('button.btn.sm.ghost', { title:'Eliminar este respaldo', onclick: async () => {
+            const ok = await UI.dialog({ title:'Eliminar respaldo automático', message:`¿Eliminar el respaldo del ${fmt.datetime(s.ts)}? Esta acción no se puede deshacer.`, confirmText:'Eliminar', variant:'danger' });
+            if (!ok) return;
+            eliminarAutobackup(s.id);
+            UI.toast('Respaldo automático eliminado.', 'warning');
+            Router.go('config');
+          } }, [ h('i.ti.ti-x') ]),
+        ])),
+      ]));
+    });
+    tbl.appendChild(tb);
+    card.appendChild(h('div.table-wrap', [ tbl ]));
+  }
+  card.appendChild(h('div', { style:{ marginTop:'10px' } }, [
+    h('button.btn.sm', { onclick: () => {
+      const s = guardarAutobackup('manual');
+      UI.toast(s ? 'Respaldo automático creado.' : 'No se pudo crear el respaldo (sin espacio en el navegador).', s ? 'success' : 'danger');
+      Router.go('config');
+    } }, [ h('i.ti.ti-camera'), 'Crear respaldo ahora' ]),
+  ]));
+  return card;
+}
+
 VIEWS.config = {
   title: 'Configuración',
   render(root) {
@@ -8859,6 +9066,9 @@ VIEWS.config = {
       ]),
     ]);
     root.appendChild(card1);
+
+    // FASE 3.8: tarjeta de respaldos automáticos y capacidad de almacenamiento.
+    root.appendChild(renderCardRespaldos());
 
     // === Técnicos oficiales del SEC ===
     const cardTec = h('div.card', { style:{ marginBottom:'14px' } });
@@ -8987,14 +9197,16 @@ VIEWS.config = {
       h('div.card-h', [ h('h3','Mantenimiento'), h('span.sub','Operaciones destructivas — usar con cuidado') ]),
       h('div', { style:{ display:'flex', gap:'8px', flexWrap:'wrap' } }, [
         h('button.btn.danger', { onclick: async () => {
-          const ok = await UI.dialog({
+          // FASE 3.12: acción crítica e irreversible — confirmación escrita.
+          const ok = await confirmarConPalabra({
             title: 'Borrar todos los datos',
-            message: 'Esto elimina equipos, pendientes, asignaciones y contactos del navegador. Descargá un backup primero.',
-            confirmText: 'Borrar todo', variant:'danger',
+            message: 'Esto elimina del navegador todos los equipos, pendientes, asignaciones, contactos, respaldos automáticos y el historial de cambios. Descargá un respaldo antes de continuar.',
+            palabra: 'ELIMINAR',
+            confirmText: 'Borrar todo',
           });
           if (!ok) return;
           STORAGE.clearAll();
-          STATE.equipos = []; STATE.pendientes = []; STATE.asignaciones = {}; STATE.contactos = {}; STATE.session = {}; STATE.tecnicosOficiales = []; STATE.diffIgnorados = {};
+          STATE.equipos = []; STATE.pendientes = []; STATE.asignaciones = {}; STATE.contactos = {}; STATE.session = {}; STATE.tecnicosOficiales = []; STATE.diffIgnorados = {}; STATE.cambios = [];
           persist();
           UI.toast('Datos eliminados.', 'warning');
           Router.go('dash');
@@ -9243,6 +9455,11 @@ function boot() {
     // Periodic chip update for REC events counter
     setInterval(() => { if (REC.isActive()) REC.updateChip(); }, 1500);
 
+    // FASE 3.8: respaldo automático al cerrar la pestaña si hubo cambios.
+    window.addEventListener('beforeunload', () => {
+      if (_datosModificados) guardarAutobackup('cierre');
+    });
+
     $('#bootScreen').remove();
     $('#app').hidden = false;
 
@@ -9266,6 +9483,8 @@ function boot() {
       try { revisarEquiposVencidos(); } catch (e) { console.error(e); }
       // 4) Refrescar badges del sidebar
       try { actualizarBadgesPendientes(); } catch (e) { console.error(e); }
+      // 5) FASE 3.8: respaldo automático de sesión (uno cada 24 h).
+      try { autobackupAlArrancar(); } catch (e) { console.error(e); }
     }, 600);
   } catch (e) {
     console.error(e);
@@ -9304,6 +9523,10 @@ try {
     // R8
     abrirModalEquiposDelKPI, abrirModalTecnicosDelPeriodo,
     sidebarColapsada, setSidebarColapsada,
+    // FASE 3
+    construirPayloadBackup, aplicarPayloadBackup, exportBackup, importBackup,
+    guardarAutobackup, listarAutobackups, eliminarAutobackup, restaurarAutobackup,
+    capacidadStorage, autobackupAlArrancar, confirmarConPalabra,
   };
 } catch {}
 </script>
