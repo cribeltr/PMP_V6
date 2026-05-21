@@ -2985,7 +2985,11 @@ function matchKey(e) {
   const i = normalize(e.inventario);
   if (s && s !== 'n/a') return `s:${s}`;
   if (i && i !== 'n/a') return `i:${i}`;
-  return null;
+  // FIX B-07 (Fase 1): los equipos sin serie ni inventario antes devolvían
+  // null y se re-creaban como "nuevos" en cada reimportación del maestro
+  // (duplicados). Clave compuesta de respaldo: nombre|servicio|marca|modelo.
+  const compuesta = [e.nombre, e.servicio, e.marca, e.modelo].map(normalize).filter(Boolean).join('|');
+  return compuesta ? `n:${compuesta}` : null;
 }
 
 function rowToEquipo(r, idx) {
@@ -3477,16 +3481,29 @@ function imprimirAnexo1(equipo) {
   const e = equipo;
   const ciclos = (e.correctivos||[]).slice(-3).reverse();
   const histRows = (e.historial||[]).slice(-12).reverse();
+  /* FIX B-08 (Fase 1): la tabla usaba campos del modelo de ciclo viejo
+     (c.apertura, c.eslabonActual, c.ruta), inexistentes en el modelo v34, por
+     lo que salía con celdas vacías. Ahora lee solicitud / envíos / recepciones
+     / reparación del modelo v34. */
   const cs = ciclos.length ? `
     <h2>Últimos ciclos correctivos</h2>
-    <table><thead><tr><th>Apertura</th><th>Folio SIGEM</th><th>Eslabón</th><th>Ruta</th><th>Estado</th></tr></thead><tbody>
-    ${ciclos.map(c => `<tr>
-      <td>${escapeHtml(fmt.date(c.apertura?.fechaEvento || c.apertura?.fecha))}</td>
-      <td>${escapeHtml(c.apertura?.folioSigem || '')}</td>
-      <td>${escapeHtml(ESLABONES_LABEL[c.eslabonActual] || c.eslabonActual || '')}</td>
-      <td>${escapeHtml(c.ruta ? c.ruta.replace('_',' ') : '')}</td>
-      <td>${c.abierto?'<span class="pill warn">abierto</span>':'<span class="pill">cerrado</span>'}</td>
-    </tr>`).join('')}
+    <table><thead><tr><th>Solicitud</th><th>Folio SIGEM</th><th>Último evento</th><th>Estado</th></tr></thead><tbody>
+    ${ciclos.map(c => {
+      const ultEnv = (c.envios || []).slice(-1)[0];
+      const ultRec = (c.recepciones || []).slice(-1)[0];
+      let ult = '—';
+      if (c.reparacion)   ult = 'Reparación ' + fmt.date(c.reparacion.fechaEvento);
+      else if (ultRec)    ult = 'Recepción ' + fmt.date(ultRec.fechaEvento);
+      else if (ultEnv)    ult = 'Envío ' + fmt.date(ultEnv.fechaEvento);
+      else if (c.solicitud) ult = 'Solicitud ' + fmt.date(c.solicitud.fechaEvento);
+      const estado = c.abierto ? 'abierto' : (c.cancelado ? 'cancelado' : 'cerrado');
+      return `<tr>
+      <td>${escapeHtml(c.solicitud ? fmt.date(c.solicitud.fechaEvento) : '—')}</td>
+      <td>${escapeHtml(c.solicitud?.folioSigem || '')}</td>
+      <td>${escapeHtml(ult)}</td>
+      <td>${c.abierto?'<span class="pill warn">'+estado+'</span>':'<span class="pill">'+estado+'</span>'}</td>
+    </tr>`;
+    }).join('')}
     </tbody></table>` : '';
   const hs = histRows.length ? `
     <h2>Historial reciente de MP</h2>
@@ -4170,6 +4187,10 @@ function exportBackup() {
     asignaciones: STATE.asignaciones,
     contactos: STATE.contactos,
     session: STATE.session,
+    // FIX B-03 (Fase 1): el respaldo debe incluir TODAS las slices persistidas.
+    // Antes faltaban estas dos y se perdían al restaurar.
+    tecnicosOficiales: STATE.tecnicosOficiales,
+    diffIgnorados: STATE.diffIgnorados,
   };
   const json = JSON.stringify(payload, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
@@ -4198,6 +4219,9 @@ async function importBackup() {
     STATE.asignaciones = data.asignaciones && typeof data.asignaciones === 'object' ? data.asignaciones : {};
     STATE.contactos    = data.contactos    && typeof data.contactos    === 'object' ? data.contactos    : {};
     STATE.session      = data.session      && typeof data.session      === 'object' ? data.session      : {};
+    // FIX B-03 (Fase 1): restaurar también las slices que antes se perdían.
+    STATE.tecnicosOficiales = Array.isArray(data.tecnicosOficiales) ? data.tecnicosOficiales : [];
+    STATE.diffIgnorados     = data.diffIgnorados && typeof data.diffIgnorados === 'object' ? data.diffIgnorados : {};
     persist();
     UI.toast(`Restaurados ${STATE.equipos.length} equipos.`, 'success');
     Router.go(STATE.view);
@@ -4539,7 +4563,19 @@ function abrirModalVinculacionC3(equipo, mp, opts={}) {
             const sel = selectCtl(
               ciclosAbiertos.map(c => ({
                 value: c.uuid,
-                label: `${(c.apertura?.folioSigem||c.solicitud?.folioSigem||'sin folio')} · ${c.eslabonActual} · ${fmt.date(c.apertura?.fechaEvento||c.apertura?.fecha||c.solicitud?.fecha)}`,
+                // FIX B-04 (Fase 1): etiqueta basada en el modelo de ciclo v34
+                // (antes usaba c.apertura / c.eslabonActual, inexistentes en v34,
+                // y mostraba "undefined" y fecha "—").
+                label: (() => {
+                  const folio = c.solicitud?.folioSigem || 'sin folio';
+                  const fSol  = c.solicitud?.fechaEvento || c.creado;
+                  const ultEnv = (c.envios || []).slice(-1)[0];
+                  const ultRec = (c.recepciones || []).slice(-1)[0];
+                  let ult = 'solo solicitud';
+                  if (ultRec)      ult = 'recepción ' + fmt.date(ultRec.fechaEvento);
+                  else if (ultEnv) ult = 'envío ' + fmt.date(ultEnv.fechaEvento);
+                  return `Folio ${folio} · solicitud ${fmt.date(fSol)} · ${ult}`;
+                })(),
               })),
               snap.cicloUuidExistente,
               { onchange: (e) => snap.cicloUuidExistente = e.target.value },
@@ -4599,15 +4635,15 @@ function abrirModalVinculacionC3(equipo, mp, opts={}) {
             const fechaISO = isoFromDateInput(snap.fechaEvento);
             if (!fechaISO) throw new Error('Fecha inválida.');
             if (!snap.folioSigem.trim()) throw new Error('Indicá el folio SIGEM o cambiá a "Crear pendiente".');
-            const { ciclo } = CICLO.crear(equipo.uuid, {
+            // FIX B-02 (Fase 1): usar la API v34 (CICLO.crearSolicitud) en vez
+            // del shim CICLO.crear, que lanzaba "modelo viejo eliminado" si el
+            // responsable estaba vacío. crearSolicitud valida responsable y
+            // folio con mensajes claros, abre el ciclo y crea el pendiente.
+            const { ciclo } = CICLO.crearSolicitud(equipo.uuid, {
               fechaEvento: fechaISO,
-              deteccion: snap.deteccion,
-              descripcion: snap.descripcion || `Causal ${mp.resultado}: ${mp.obs || 'sin descripción'}`,
-              responsable: snap.responsable,
-              sigemEstado: 'existe',
               folioSigem: snap.folioSigem.trim(),
-              startEslabon: 'diagnostico',
-              causalLink: { mpId: mp.id, causal: mp.resultado },
+              responsable: snap.responsable,
+              observaciones: snap.descripcion || `Causal ${mp.resultado}: ${mp.obs || 'sin descripción'}`,
             });
             mp.correctivoUuid = ciclo.uuid;
             mp.sinVincular = false;
@@ -4646,8 +4682,11 @@ function abrirModalVinculacionC3(equipo, mp, opts={}) {
 }
 
 function abrirModalVinculacionC2(equipo, mp) {
-  // Buscar envíos pre-existentes en ciclos abiertos del equipo (ya hubo envío sin recibir).
-  const ciclosConEnvio = (equipo.correctivos || []).filter(c => c.abierto && c.envio);
+  // FIX B-01 (Fase 1): el modelo v34 usa c.envios[] (array), no c.envio
+  // (singular del modelo viejo). Antes este filtro quedaba siempre vacío.
+  // Ciclos abiertos con al menos un envío sin recepción.
+  const ciclosConEnvio = (equipo.correctivos || []).filter(c =>
+    c.abierto && (c.envios || []).some(en => !en.recepcionUuid));
   let modo = ciclosConEnvio.length ? 'existente' : 'nuevo';
   let snap = {
     cicloUuidExistente: ciclosConEnvio[0]?.uuid || null,
@@ -4689,10 +4728,16 @@ function abrirModalVinculacionC2(equipo, mp) {
         formArea.innerHTML = '';
         if (modo === 'existente') {
           const sel = selectCtl(
-            ciclosConEnvio.map(c => ({
-              value: c.uuid,
-              label: `${c.envio.folioEnvio || 'sin folio'} · ${c.envio.empresa || 'sin empresa'} · ${fmt.date(c.envio.fechaEvento || c.envio.fecha)}`,
-            })),
+            ciclosConEnvio.map(c => {
+              // FIX B-01 (Fase 1): etiqueta basada en el envío abierto del modelo v34.
+              const env = (c.envios || []).find(en => !en.recepcionUuid) || (c.envios || []).slice(-1)[0];
+              return {
+                value: c.uuid,
+                label: env
+                  ? `Envío ${env.numeroEnvio || 'sin folio'} · ${env.empresaST || 'sin empresa'} · ${fmt.date(env.fechaEvento)}`
+                  : 'Ciclo sin envío',
+              };
+            }),
             snap.cicloUuidExistente,
             { onchange:(e)=> snap.cicloUuidExistente = e.target.value },
           );
@@ -4722,30 +4767,35 @@ function abrirModalVinculacionC2(equipo, mp) {
             if (!snap.cicloUuidExistente) throw new Error('Elegí un ciclo.');
             const c = (equipo.correctivos||[]).find(x => x.uuid === snap.cicloUuidExistente);
             if (!c) throw new Error('Ciclo no encontrado.');
+            // FIX B-01 (Fase 1): el modelo v34 usa c.envios[]; tomar el envío
+            // abierto para fechar el cambio de estado.
+            const env = (c.envios || []).find(en => !en.recepcionUuid) || (c.envios || []).slice(-1)[0];
             mp.correctivoUuid = c.uuid;
+            mp.sinVincular = false;
             equipo.estado = 'ServicioTecnico';
-            equipo.estadoDesde = c.envio.fechaEvento || c.envio.fecha;
+            equipo.estadoDesde = env ? env.fechaEvento : (equipo.estadoDesde || mp.fechaEvento || mp.fecha);
             pushEvento(equipo, { tipo:'CAUSAL-VINCULADA', ts: equipo.estadoDesde, payload: { mpId: mp.id, causal: mp.resultado, cicloUuid: c.uuid, envio: true } });
             persist('equipos');
             UI.toast('Causal C2 vinculada al envío existente.', 'success');
           } else {
             const fechaISO = isoFromDateInput(snap.fecha);
             if (!fechaISO) throw new Error('Fecha del envío inválida.');
-            if (!snap.empresa.trim()) throw new Error('Indicá la empresa.');
-            const { ciclo } = CICLO.crear(equipo.uuid, {
+            // FIX B-01 (Fase 1): usar la API v34 (CICLO.agregarEnvio con ciclo
+            // nuevo) en vez del shim CICLO.crear, que siempre lanzaba error
+            // porque exigía folioSigem (vacío en el flujo C2). agregarEnvio
+            // valida número de envío, empresa y responsable con mensajes claros.
+            const { ciclo } = CICLO.agregarEnvio(equipo.uuid, null, {
               fechaEvento: fechaISO,
-              deteccion: snap.deteccion,
-              descripcion: snap.descripcion || `Causal ${mp.resultado}: equipo ya en servicio técnico`,
+              numeroEnvio: snap.folioEnvio,
+              empresaST: snap.empresa,
               responsable: snap.responsable,
-              sigemEstado: 'noAplica',
-              folioSigem: '',
-              startEslabon: 'recepcion',
-              envio: { folioEnvio: snap.folioEnvio, empresa: snap.empresa, fecha: fechaISO, responsable: snap.responsable },
-              causalLink: { mpId: mp.id, causal: mp.resultado },
+              observaciones: snap.descripcion || `Causal ${mp.resultado}: equipo ya en servicio técnico`,
             });
             mp.correctivoUuid = ciclo.uuid;
+            mp.sinVincular = false;
+            pushEvento(equipo, { tipo:'CAUSAL-VINCULADA', ts: fechaISO, payload: { mpId: mp.id, causal: mp.resultado, cicloUuid: ciclo.uuid, envio: true } });
             persist('equipos');
-            UI.toast(`Ciclo creado en Recepción y causal C2 vinculada.`, 'success');
+            UI.toast('Ciclo creado con el envío y causal C2 vinculada.', 'success');
           }
           close('save');
           if (STATE.view) Router.go(STATE.view, STATE.viewParams);
@@ -5597,7 +5647,9 @@ function renderSessionChip() {
   if (s.fechaCarga) lines.push(`Cargado ${fmt.rel(s.fechaCarga)}`);
   if (meta.migratedFromLegacy) lines.push('Migrado desde legacy');
   lines.push(`v${APP_VERSION}`);
-  $('#sessionChip').innerHTML = lines.map(l => `<div>${l}</div>`).join('');
+  // FIX B-09 (Fase 1): escapar el contenido (incluye el nombre del archivo
+  // maestro, controlado por el usuario) antes de inyectarlo como HTML.
+  $('#sessionChip').innerHTML = lines.map(l => `<div>${escapeHtml(l)}</div>`).join('');
 }
 
 function updateTopbar(title, sub) {
@@ -6693,6 +6745,11 @@ VIEWS.pmp = {
     wrap.appendChild(body);
     root.appendChild(wrap);
 
+    // FIX B-06 (Fase 1): contenedor del sidecar de cumplimiento, re-renderizado
+    // dentro de update() para reflejar el mes filtrado.
+    const cumplWrap = h('div');
+    root.appendChild(cumplWrap);
+
     function currentFilters() {
       return {
         modo: selModo.value,
@@ -6709,6 +6766,9 @@ VIEWS.pmp = {
       body.innerHTML = '';
       if (f.modo === 'mes') renderMes(body, meta, f);
       else                  renderAnio(body, meta, f);
+      // FIX B-06 (Fase 1): los KPIs de cumplimiento siguen el mes filtrado.
+      cumplWrap.innerHTML = '';
+      cumplWrap.appendChild(renderCumplimientoSidecar(f.mes));
     }
     selModo.addEventListener('change', update);
     selMes.addEventListener('change', update);
@@ -6717,16 +6777,14 @@ VIEWS.pmp = {
     selFrec.addEventListener('change', update);
     search.querySelector('input').addEventListener('input', update);
     update();
-
-    // KPI cumplimiento del mes
-    const cumpl = renderCumplimientoSidecar();
-    root.appendChild(cumpl);
   },
 };
 
-function renderCumplimientoSidecar() {
-  const now = new Date();
-  const mes = now.getMonth()+1;
+function renderCumplimientoSidecar(mes) {
+  // FIX B-06 (Fase 1): el mes ahora es parámetro para que los KPIs de
+  // cumplimiento coincidan con el mes filtrado en la vista PMP. Sin
+  // argumento, usa el mes calendario actual (comportamiento anterior).
+  mes = mes || (new Date().getMonth() + 1);
   const programadas = STATE.equipos.filter(e => e.grilla?.[mes] === 'X' || e.grilla?.[mes] === 'R');
   const ejecutadas  = programadas.filter(e => (e.historial||[]).some(h => h.mes === mes && h.resultado === 'SI'));
   const causalizadas = programadas.filter(e => (e.historial||[]).some(h => h.mes === mes && CAUSALES[h.resultado]));
