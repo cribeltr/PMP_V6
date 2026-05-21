@@ -1112,6 +1112,7 @@ const NAV_ITEMS = [
   { id: 'entregas', label: 'Entregas',   icon: 'ti-clipboard-list',   grupo: 'Operación' },
   { id: 'tareas',   label: 'Pendientes', icon: 'ti-checks',           grupo: 'Operación' },
   { id: 'reportes', label: 'Reportes',   icon: 'ti-report',           grupo: 'Gestión' },
+  { id: 'actividad',label: 'Actividad',  icon: 'ti-history',          grupo: 'Gestión' },
   { id: 'agenda',   label: 'Agenda',     icon: 'ti-address-book',     grupo: 'Gestión' },
   { id: 'config',   label: 'Configuración', icon: 'ti-settings',      grupo: 'Sistema' },
 ];
@@ -2379,6 +2380,40 @@ function pushEvento(equipo, ev) {
   });
 }
 
+/* ============================================================
+   FASE 3.10 — Historial de cambios (log campo-a-campo)
+   ============================================================ */
+const CAMBIOS_MAX = 5000;   // tope del log global (rotación por antigüedad)
+
+/**
+ * Registra una modificación de un campo de un equipo en el log global
+ * `STATE.cambios`. Empieza a registrar desde el momento de implementación;
+ * no reconstruye historia previa. No persiste por sí solo: el llamador
+ * debe hacer persist('cambios') tras un lote de cambios.
+ * @param tipoAccion 'creacion' | 'edicion' | 'eliminacion'
+ */
+function registrarCambio(equipoUuid, campo, antes, despues, tipoAccion) {
+  STATE.cambios.push({
+    id: uuid(),
+    ts: new Date().toISOString(),
+    equipoUuid,
+    campo: campo || '',
+    valorAnterior: antes == null ? '' : String(antes),
+    valorNuevo: despues == null ? '' : String(despues),
+    tipoAccion: tipoAccion || 'edicion',
+  });
+  if (STATE.cambios.length > CAMBIOS_MAX) {
+    STATE.cambios.splice(0, STATE.cambios.length - CAMBIOS_MAX);
+  }
+}
+
+/** Cambios registrados para un equipo, del más reciente al más antiguo. */
+function cambiosDeEquipo(equipoUuid) {
+  return STATE.cambios
+    .filter(c => c.equipoUuid === equipoUuid)
+    .sort((a, b) => new Date(b.ts) - new Date(a.ts));
+}
+
 /**
  * Devuelve { title, desc, icon, color } para presentar un evento en el timeline.
  * Tipos conocidos tienen ícono/título amigables; los desconocidos caen al genérico.
@@ -2884,6 +2919,10 @@ async function importMaestroFile(file) {
           nombre: prev.nombre, serie: prev.serie, inventario: prev.inventario, servicio: prev.servicio, fam: prev.fam,
           ...cambios,
         });
+        // FASE 3.10: registrar en el log de cambios lo que efectivamente cambió
+        // en los datos (mergeEquipoInPlace ya aplicó la actualización).
+        cambios.fields.forEach(f => registrarCambio(prev.uuid, f.label || f.campo, f.antes, f.despues, 'edicion'));
+        cambios.grilla.forEach(g => registrarCambio(prev.uuid, `Grilla ${MESES[g.mes-1]}`, g.antes || '∅', g.despues || '∅', 'edicion'));
       }
       merged.push(prev);
       result.actualizados++;
@@ -2895,6 +2934,8 @@ async function importMaestroFile(file) {
         uuid: nuevo.uuid,
         nombre: nuevo.nombre, serie: nuevo.serie, inventario: nuevo.inventario, servicio: nuevo.servicio, fam: nuevo.fam,
       });
+      // FASE 3.10: alta de equipo desde el maestro.
+      registrarCambio(nuevo.uuid, 'Alta de equipo', '', nuevo.nombre || '(sin nombre)', 'creacion');
     }
   }
   // Equipos que no estaban en el archivo: se mantienen, pero se reportan como ausentes
@@ -2920,6 +2961,7 @@ async function importMaestroFile(file) {
   });
   persist('equipos');
   persist('session');
+  persist('cambios');   // FASE 3.10
 
   // Filtrar diferencias previamente ignoradas (decisiones persistidas)
   aplicarIgnoradosAlDiff(diff);
@@ -5001,6 +5043,11 @@ function abrirModalGrillaCelda(equipo, mes) {
         equipo.grilla = equipo.grilla || {};
         equipo.grilla[mes] = nuevo || null;
         pushEvento(equipo, { tipo:'GRILLA', ts: new Date().toISOString(), payload: { mes, valor: nuevo || null, anterior: actual || null } });
+        // FASE 3.10: registrar el cambio de marcador de grilla en el log.
+        if ((actual || '') !== (nuevo || '')) {
+          registrarCambio(equipo.uuid, `Grilla ${MESES[mes-1]}`, actual || '∅', nuevo || '∅', 'edicion');
+          persist('cambios');
+        }
         persist('equipos');
         UI.toast(`Marca de ${MESES[mes-1]} actualizada.`, 'success');
         close('save');
@@ -6611,6 +6658,7 @@ function openFicha(uuid) {
     { id: 'grilla',    label: 'Grilla anual', icon: 'ti-calendar-month' },
     { id: 'historial', label: 'Historial MP', icon: 'ti-history', count: (e.historial||[]).length },
     { id: 'eventos',   label: 'Eventos',   icon: 'ti-timeline', count: (e.eventos||[]).length },
+    { id: 'cambios',   label: 'Cambios',   icon: 'ti-history',  count: cambiosDeEquipo(e.uuid).length },
     { id: 'ciclos',    label: 'Ciclos',    icon: 'ti-tools',    count: (e.correctivos||[]).length },
     { id: 'pendientes',label: 'Pendientes',icon: 'ti-checklist',count: (e.pendientesIds||[]).length },
   ];
@@ -6796,6 +6844,27 @@ function renderFichaTab(id, e) {
         ]));
       });
       wrap.appendChild(tl);
+      break;
+    }
+    case 'cambios': {
+      // FASE 3.10: historial de cambios campo-a-campo del equipo.
+      const cambios = cambiosDeEquipo(e.uuid);
+      if (!cambios.length) { wrap.appendChild(emptyTabHint('Sin cambios de datos registrados para este equipo. Los cambios se registran a partir de la implementación de esta función.')); break; }
+      const tbl = h('table.dt');
+      tbl.innerHTML = `<thead><tr><th>Fecha/hora</th><th>Campo</th><th>Antes</th><th>Después</th><th>Acción</th></tr></thead>`;
+      const tb = h('tbody');
+      cambios.forEach(c => {
+        tb.appendChild(h('tr', [
+          h('td.col-mono', fmt.datetime(c.ts)),
+          h('td', c.campo || '—'),
+          h('td.wrap-2', { style:{ color:'var(--ink-3)' } }, c.valorAnterior || '∅'),
+          h('td.wrap-2', { style:{ color:'var(--success)' } }, c.valorNuevo || '∅'),
+          h('td', h(`span.pill.${c.tipoAccion === 'creacion' ? 'info' : c.tipoAccion === 'eliminacion' ? 'danger' : 'muted'}`,
+            c.tipoAccion === 'creacion' ? 'creación' : c.tipoAccion === 'eliminacion' ? 'eliminación' : 'edición')),
+        ]));
+      });
+      tbl.appendChild(tb);
+      wrap.appendChild(h('div.table-wrap', [ tbl ]));
       break;
     }
     case 'ciclos': {
@@ -8981,6 +9050,87 @@ function abrirDrawerContacto(servicio) {
   });
 }
 
+/* ============================================================
+   FASE 3.10 — VIEW · Actividad reciente (historial de cambios global)
+   ============================================================ */
+VIEWS.actividad = {
+  title: 'Actividad reciente',
+  render(root) {
+    root.appendChild(viewHeader({
+      title: 'Actividad reciente',
+      desc: 'Historial de cambios en los datos de los equipos.',
+    }));
+    if (!STATE.cambios.length) {
+      root.appendChild(emptyState({
+        icon: 'ti-history',
+        title: 'Sin actividad registrada',
+        desc: 'Los cambios en los datos de los equipos (importación del maestro, edición de la grilla anual) se registran acá a partir de ahora.',
+      }));
+      return;
+    }
+    const campos = Array.from(new Set(STATE.cambios.map(c => c.campo).filter(Boolean)))
+      .sort((a, b) => a.localeCompare(b, 'es'));
+    const search = h('div.search', { style:{ flex:'1', minWidth:'220px' } }, [
+      h('i.ti.ti-search'),
+      h('input', { type:'text', placeholder:'Buscar por equipo (nombre, serie, inventario)…' }),
+    ]);
+    const selCampo = selectCtl([{ value:'', label:'Todos los campos' }, ...campos.map(c => ({ value:c, label:c }))], '');
+    const inpDesde = h('input.input', { type:'date', style:{ maxWidth:'150px' } });
+    const inpHasta = h('input.input', { type:'date', style:{ maxWidth:'150px' } });
+    root.appendChild(h('div', { style:{ display:'flex', gap:'8px', alignItems:'center', flexWrap:'wrap', marginBottom:'12px' } }, [
+      search, selCampo,
+      h('span', { style:{ fontSize:'11px', color:'var(--ink-3)' } }, 'Desde'), inpDesde,
+      h('span', { style:{ fontSize:'11px', color:'var(--ink-3)' } }, 'hasta'), inpHasta,
+    ]));
+    const wrap = h('div.table-wrap');
+    const meta = h('div.table-meta');
+    const tbl = h('table.dt');
+    wrap.appendChild(meta); wrap.appendChild(tbl);
+    root.appendChild(wrap);
+
+    function refresh() {
+      const nq = normalize(search.querySelector('input').value);
+      const campo = selCampo.value;
+      const dDesde = inpDesde.value ? new Date(inpDesde.value + 'T00:00:00').getTime() : null;
+      const dHasta = inpHasta.value ? new Date(inpHasta.value + 'T23:59:59').getTime() : null;
+      let lista = STATE.cambios.slice().sort((a, b) => new Date(b.ts) - new Date(a.ts));
+      lista = lista.filter(c => {
+        if (campo && c.campo !== campo) return false;
+        const t = new Date(c.ts).getTime();
+        if (dDesde != null && t < dDesde) return false;
+        if (dHasta != null && t > dHasta) return false;
+        if (nq) {
+          const e = EQ.byUuid(c.equipoUuid);
+          const hay = e ? `${e.nombre} ${e.serie} ${e.inventario}` : '';
+          if (!normalize(hay).includes(nq)) return false;
+        }
+        return true;
+      });
+      meta.textContent = `${fmt.number(lista.length)} cambios` + (lista.length > 300 ? ' · se muestran los 300 más recientes' : '');
+      tbl.innerHTML = `<thead><tr><th>Fecha/hora</th><th>Equipo</th><th>Campo</th><th>Antes</th><th>Después</th><th>Acción</th></tr></thead>`;
+      const tb = h('tbody');
+      lista.slice(0, 300).forEach(c => {
+        const e = EQ.byUuid(c.equipoUuid);
+        tb.appendChild(h('tr', { style:{ cursor: e ? 'pointer' : 'default' }, onclick: () => { if (e) openFicha(e.uuid); } }, [
+          h('td.col-mono', fmt.datetime(c.ts)),
+          h('td', e ? (e.nombre || '—') : '(equipo no disponible)'),
+          h('td', c.campo || '—'),
+          h('td.wrap-2', { style:{ color:'var(--ink-3)' } }, c.valorAnterior || '∅'),
+          h('td.wrap-2', { style:{ color:'var(--success)' } }, c.valorNuevo || '∅'),
+          h('td', h(`span.pill.${c.tipoAccion === 'creacion' ? 'info' : c.tipoAccion === 'eliminacion' ? 'danger' : 'muted'}`,
+            c.tipoAccion === 'creacion' ? 'creación' : c.tipoAccion === 'eliminacion' ? 'eliminación' : 'edición')),
+        ]));
+      });
+      tbl.appendChild(tb);
+    }
+    search.querySelector('input').addEventListener('input', refresh);
+    selCampo.addEventListener('change', refresh);
+    inpDesde.addEventListener('change', refresh);
+    inpHasta.addEventListener('change', refresh);
+    refresh();
+  },
+};
+
 /** FASE 3.8 — tarjeta "Respaldos automáticos y almacenamiento" para Configuración. */
 function renderCardRespaldos() {
   const card = h('div.card', { style:{ marginBottom:'14px' } });
@@ -9527,6 +9677,7 @@ try {
     construirPayloadBackup, aplicarPayloadBackup, exportBackup, importBackup,
     guardarAutobackup, listarAutobackups, eliminarAutobackup, restaurarAutobackup,
     capacidadStorage, autobackupAlArrancar, confirmarConPalabra,
+    registrarCambio, cambiosDeEquipo,
   };
 } catch {}
 </script>
