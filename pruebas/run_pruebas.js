@@ -482,6 +482,26 @@ function assert(cond, msg) { if (!cond) throw new Error(msg || 'aserción falló
       'no aparece la sección de historial de exportaciones');
   });
 
+  // ============================================================
+  // GRUPO L — Fase 3.3 (trazabilidad: comentario manual en el timeline)
+  // ============================================================
+  check('L-01', '3.3 · un comentario queda como evento en la línea de tiempo', () => {
+    const e = P.STATE.equipos.find(x => !x.esSlot);
+    const n0 = (e.eventos || []).length;
+    P.pushEvento(e, { tipo: 'COMENTARIO', ts: new Date().toISOString(), payload: { texto: 'Comentario de prueba', autor: 'Ana' } });
+    assert((e.eventos || []).length === n0 + 1, 'el evento no se agregó');
+    assert(e.eventos[e.eventos.length - 1].tipo === 'COMENTARIO', 'tipo incorrecto');
+  });
+  check('L-02', '3.3 · describeEvento presenta el comentario con autor y texto', () => {
+    const d = P.describeEvento({ tipo: 'COMENTARIO', payload: { texto: 'hola mundo', autor: 'Ana' } });
+    assert(/Ana/.test(d.title), 'el título no incluye el autor');
+    assert(d.desc === 'hola mundo', 'desc=' + d.desc);
+  });
+  check('L-03', '3.3 · la ficha tiene el botón "Agregar comentario"', () => {
+    assert(/'Agregar comentario'/.test(appSrc), 'no existe el botón de comentario');
+    assert(/COMENTARIO: \(\) =>/.test(appSrc), 'describeEvento no maneja COMENTARIO');
+  });
+
   // ---- reporte ----
   const ok = results.filter(r => r.ok).length;
   const fail = results.filter(r => !r.ok).length;

@@ -2536,6 +2536,12 @@ function describeEvento(ev) {
       desc: p.folio ? 'Folio: ' + p.folio : '',
       icon: 'ti-circle-check', color: 'success',
     }),
+    // FASE 3.3 — comentario manual del usuario en la línea de tiempo.
+    COMENTARIO: () => ({
+      title: 'Comentario' + (p.autor ? ' · ' + p.autor : ''),
+      desc: p.texto || '',
+      icon: 'ti-message-2', color: 'info',
+    }),
   };
   // Eslabones del ciclo: CICLO-DIAGNOSTICO, CICLO-COMPRA, CICLO-GARANTIA, CICLO-ENVIO, CICLO-RECEPCION, CICLO-REPARACION, CICLO-APERTURA
   const m = ev.tipo && ev.tipo.match(/^CICLO-(APERTURA|DIAGNOSTICO|COMPRA|GARANTIA|ENVIO|RECEPCION|REPARACION)$/);
@@ -4461,11 +4467,11 @@ function confirmarConPalabra({ title, message, palabra, confirmText }) {
  * Diálogo simple para pedir un texto (nombrar / renombrar). Resuelve con el
  * texto ingresado, o null si se cancela. Usado por 3.2 (vistas guardadas) y otros.
  */
-function pedirTexto({ title, label, valor = '', placeholder = '', confirmText = 'Guardar' }) {
+function pedirTexto({ title, sub, label, valor = '', placeholder = '', confirmText = 'Guardar' }) {
   return new Promise((resolve) => {
     let val = valor;
     UI.modal({
-      title, size: 'sm',
+      title, sub, size: 'sm',
       content: (b) => {
         const inp = inputCtl({ value: valor, placeholder, oninput: (e) => val = e.target.value });
         b.appendChild(field(label, inp));
@@ -6944,23 +6950,41 @@ function renderFichaTab(id, e) {
       break;
     }
     case 'eventos': {
-      const evs = (e.eventos || []).slice().sort((a,b) => new Date(b.ts||0) - new Date(a.ts||0));
-      if (!evs.length) { wrap.appendChild(emptyTabHint('Aún no hay eventos en el timeline.')); break; }
-      const tl = h('div.timeline');
-      evs.forEach(ev => {
-        const meta = describeEvento(ev);
-        tl.appendChild(h('div.tl-item', [
-          h('div.tl-date', [ fmt.date(ev.ts), h('div',{style:{color:'var(--ink-4)',fontSize:'10.5px'}}, fmt.rel(ev.ts)) ]),
-          h('div.tl-body', [
-            h('div.title', { style:{display:'flex', alignItems:'center', gap:'6px'} }, [
-              h('i.ti', { class:'ti ' + meta.icon, style:{ color: 'var(--' + meta.color + ')', fontSize:'14px' } }),
-              meta.title,
-            ]),
-            meta.desc ? h('div.desc', meta.desc) : null,
-          ]),
+      // FASE 3.3: botón "Agregar comentario" — la nota queda como evento en la
+      // línea de tiempo. pintar() re-renderiza el tab tras agregar uno.
+      const cont = h('div');
+      function pintar() {
+        cont.innerHTML = '';
+        cont.appendChild(h('div', { style:{ marginBottom:'12px' } }, [
+          h('button.btn.sm', { onclick: async () => {
+            const txt = await pedirTexto({ title:'Agregar comentario', sub: e.nombre, label:'Comentario', placeholder:'Nota libre sobre el equipo…', confirmText:'Agregar' });
+            if (!txt) return;
+            pushEvento(e, { tipo:'COMENTARIO', ts: new Date().toISOString(), payload:{ texto: txt, autor: usuarioActual() || '' } });
+            persist('equipos');
+            UI.toast('Comentario agregado a la línea de tiempo.', 'success');
+            pintar();
+          } }, [ h('i.ti.ti-message-plus'), 'Agregar comentario' ]),
         ]));
-      });
-      wrap.appendChild(tl);
+        const evs = (e.eventos || []).slice().sort((a,b) => new Date(b.ts||0) - new Date(a.ts||0));
+        if (!evs.length) { cont.appendChild(emptyTabHint('Aún no hay eventos en el timeline.')); return; }
+        const tl = h('div.timeline');
+        evs.forEach(ev => {
+          const meta = describeEvento(ev);
+          tl.appendChild(h('div.tl-item', [
+            h('div.tl-date', [ fmt.date(ev.ts), h('div',{style:{color:'var(--ink-4)',fontSize:'10.5px'}}, fmt.rel(ev.ts)) ]),
+            h('div.tl-body', [
+              h('div.title', { style:{display:'flex', alignItems:'center', gap:'6px'} }, [
+                h('i.ti', { class:'ti ' + meta.icon, style:{ color: 'var(--' + meta.color + ')', fontSize:'14px' } }),
+                meta.title,
+              ]),
+              meta.desc ? h('div.desc', meta.desc) : null,
+            ]),
+          ]));
+        });
+        cont.appendChild(tl);
+      }
+      pintar();
+      wrap.appendChild(cont);
       break;
     }
     case 'cambios': {
@@ -10074,6 +10098,7 @@ try {
     registrarCambio, cambiosDeEquipo, buscarLibre, openFicha,
     invListarVistas, invCrearVista, invRenombrarVista, invEliminarVista, pedirTexto,
     registrarExportacion, filtrosLegibles, abrirModalExportarInventario,
+    pushEvento, describeEvento,
   };
 } catch {}
 </script>
