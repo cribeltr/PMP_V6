@@ -12,6 +12,7 @@
 | **Fase 0** — Auditoría y contrato funcional | ✅ Completa | `FASE_0_REPORTE.md` |
 | **Fase 1** — Correcciones quirúrgicas | ✅ Completa — 8 hallazgos corregidos | `FASE_1_REPORTE.md` |
 | **Fase 2** — Reorganización y rediseño UX/UI | ✅ Completa | `FASE_2_REPORTE.md` |
+| **Fase 2.5** — Aplicación de la dirección visual | ✅ Completa | `FASE_2_5_REPORTE.md` |
 | **Fase 3** — Expansión funcional | ✅ Completa — **12 de 12** funcionalidades | `FASE_3_AVANCE.md` |
 
 **Arnés de pruebas automatizado:** `pruebas/run_pruebas.js` (jsdom) — **84/84 PASA · 0 regresiones** en la última ejecución.
@@ -25,6 +26,7 @@ La herramienta entregada no era un simple registrador: ya era una aplicación de
 - **Fase 0** — Auditoría exhaustiva: 22 hallazgos de código (1 crítico, 2 altos, 9 medios, 10 bajos) + 2 de rendimiento; inventario de 9 vistas; auditoría UX/estructural; parámetros del dominio; contrato funcional de 78 casos; dataset de prueba de 60 equipos; arnés automatizado con jsdom.
 - **Fase 1** — 8 correcciones quirúrgicas, incluido el bug **crítico** (vinculación de causal C2 rota de extremo a extremo) y dos **altos**. 8 casos del contrato pasaron de FALLA a PASA, **0 regresiones**.
 - **Fase 2** — Accesibilidad (labels asociados, navegación por teclado, contraste WCAG AA), navegación móvil (la sidebar desaparecía sin reemplazo), sidebar agrupada, tokens de diseño, limpieza de código muerto.
+- **Fase 2.5** — Aplicación de la dirección visual obligatoria (paradigma de ventanas flotantes): fondo neutro, superficies blancas elevadas con sombras suaves multicapa, sistema de radios (8/12/16/999), modales con `backdrop-filter: blur(10px)` y animación fade+scale, controles con radios y microinteracciones consistentes. Detalle en `FASE_2_5_REPORTE.md`.
 - **Fase 3** — **Las 12 funcionalidades** implementadas como enriquecimiento de lo existente: respaldo automático, historial de cambios, confirmación escrita, búsqueda libre en el header, vistas de filtros guardadas, exportación con metadata, comentarios de trazabilidad, recordatorios con hora/snooze, centro de alertas, conciliación con CSV e historial, informe mensual con hoja por servicio, y dashboard con atajos y medición de rendimiento.
 
 ---
@@ -96,8 +98,8 @@ Durante el proyecto se consultó una vez (prioridad y enfoque de la Fase 3); el 
 |---|---|
 | `index.html` | Herramienta actualizada y funcional (Fases 0–3). |
 | `original_backup.html` | Copia exacta del HTML original, intacta. |
-| `pre_fase_1_backup.html` · `pre_fase_2_backup.html` · `pre_fase_3_backup.html` | Backups intermedios por fase. |
-| `FASE_0_REPORTE.md` … `FASE_3_AVANCE.md`, `REPORTE_FINAL.md` | Reportes por fase y final. |
+| `pre_fase_1_backup.html` · `pre_fase_2_backup.html` · `pre_fase_2_5_backup.html` · `pre_fase_3_backup.html` | Backups intermedios por fase. |
+| `FASE_0_REPORTE.md` … `FASE_3_AVANCE.md`, `FASE_2_5_REPORTE.md`, `REPORTE_FINAL.md` | Reportes por fase y final. |
 | `pruebas/contrato_funcional.md` | Contrato funcional: línea base de Fase 0 + extensiones de Fases 1–3. |
 | `pruebas/run_pruebas.js` | Arnés automatizado (jsdom). Ejecutar: `npm install jsdom && node pruebas/run_pruebas.js`. |
 | `pruebas/resultados_finales.md` | Resultado de la última ejecución (84/84). |
