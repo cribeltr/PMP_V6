@@ -412,15 +412,17 @@ hr { border: 0; border-top: .5px solid var(--line); margin: 0; }
   border: .5px solid var(--line-2);
   background: var(--paper);
   color: var(--ink);
-  border-radius: var(--r-md);
+  border-radius: var(--radius-sm);
   font-size: 12.5px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 80ms ease, border-color 80ms ease;
+  /* FASE 2.5: transiciones 150ms ease-out + feedback de clic. */
+  transition: background 150ms ease-out, border-color 150ms ease-out,
+              box-shadow 150ms ease-out, transform 150ms ease-out;
   white-space: nowrap;
 }
 .btn:hover { background: var(--paper-2); }
-.btn:active { background: var(--paper-3); }
+.btn:active { background: var(--paper-3); transform: scale(.98); }
 .btn i { font-size: 15px; color: var(--ink-2); }
 .btn[disabled] { opacity: .5; cursor: not-allowed; }
 .btn.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
@@ -435,8 +437,8 @@ hr { border: 0; border-top: .5px solid var(--line); margin: 0; }
 .btn.icon i { font-size: 16px; }
 .btn-group { display: inline-flex; }
 .btn-group .btn { border-radius: 0; border-right-width: 0; }
-.btn-group .btn:first-child { border-radius: var(--r-md) 0 0 var(--r-md); }
-.btn-group .btn:last-child { border-radius: 0 var(--r-md) var(--r-md) 0; border-right-width: .5px; }
+.btn-group .btn:first-child { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+.btn-group .btn:last-child { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; border-right-width: .5px; }
 
 /* ============================================================
    FORMS
@@ -453,16 +455,16 @@ hr { border: 0; border-top: .5px solid var(--line); margin: 0; }
 
 .input, .select, .textarea {
   padding: 6px 10px;
-  border: .5px solid var(--line-2);
-  border-radius: var(--r-md);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
   background: var(--paper);
   font-size: 13px;
   outline: none;
-  transition: border-color 80ms ease, box-shadow 80ms ease;
+  transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
 }
 .input:focus, .select:focus, .textarea:focus {
-  border-color: var(--ink-3);
-  box-shadow: 0 0 0 3px rgba(94,168,232,.18);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(59,110,168,.18);
 }
 /* Foco visible para navegación por teclado en cualquier elemento focusable */
 :focus-visible {
@@ -487,11 +489,16 @@ hr { border: 0; border-top: .5px solid var(--line); margin: 0; }
 .search {
   display: flex;
   align-items: center;
-  border: .5px solid var(--line-2);
-  border-radius: var(--r-md);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
   background: var(--paper);
   padding: 0 10px;
   gap: 6px;
+  transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
+}
+.search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(59,110,168,.18);
 }
 .search i { color: var(--ink-3); font-size: 16px; }
 .search input {
@@ -508,7 +515,7 @@ hr { border: 0; border-top: .5px solid var(--line); margin: 0; }
   gap: 4px;
   font-size: 11px;
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--paper-3);
   color: var(--ink-2);
   border: .5px solid var(--line);
