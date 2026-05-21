@@ -1560,6 +1560,29 @@ function dateInputValue(d) {
   return `${y}-${m}-${day}`;
 }
 
+/**
+ * FASE 3.4 — combina fecha (YYYY-MM-DD) y hora (HH:MM, opcional) en un ISO.
+ * Sin hora, usa mediodía local (misma convención que isoFromDateInput).
+ */
+function isoFromDateTime(fecha, hora) {
+  if (!fecha) return null;
+  if (hora && /^\d{1,2}:\d{2}$/.test(hora)) {
+    const d = new Date(fecha + 'T' + (hora.length === 4 ? '0' + hora : hora) + ':00');
+    return isNaN(d) ? null : d.toISOString();
+  }
+  return isoFromDateInput(fecha);
+}
+
+/** FASE 3.4 — 'HH:MM' de un ISO; vacío si es el mediodía convencional (sin hora real). */
+function horaInputValue(d) {
+  if (!d) return '';
+  const dt = (d instanceof Date) ? d : new Date(d);
+  if (isNaN(dt)) return '';
+  const hh = String(dt.getHours()).padStart(2,'0');
+  const mm = String(dt.getMinutes()).padStart(2,'0');
+  return (hh === '12' && mm === '00') ? '' : `${hh}:${mm}`;
+}
+
 function monthOfISO(iso) {
   const d = new Date(iso);
   return isNaN(d) ? null : d.getMonth() + 1;
@@ -2154,6 +2177,33 @@ const PENDIENTE = {
 
   reabrir(id, nota='') {
     return this.cambiarEstado(id, 'Abierto', nota || 'Reabierto');
+  },
+
+  /** FASE 3.4 — posponer (snooze): cambia la fecha de compromiso y lo registra en el log. */
+  posponer(id, nuevoVence, nota='') {
+    const p = STATE.pendientes.find(x => x.id === id);
+    if (!p) return;
+    const antes = p.vence;
+    p.vence = nuevoVence;
+    p.log = p.log || [];
+    p.log.push({ ts: new Date().toISOString(),
+      nota: `Pospuesto: ${antes ? fmt.date(antes) : '(sin fecha)'} → ${fmt.date(nuevoVence)}` + (nota ? ` · ${nota}` : '') });
+    persist('pendientes');
+    return p;
+  },
+
+  /** FASE 3.4 — elimina un pendiente y limpia sus referencias en los equipos. */
+  eliminar(id) {
+    const p = STATE.pendientes.find(x => x.id === id);
+    if (!p) return;
+    STATE.pendientes = STATE.pendientes.filter(x => x.id !== id);
+    STATE.equipos.forEach(eq => {
+      if (eq.pendientesIds && eq.pendientesIds.includes(id)) {
+        eq.pendientesIds = eq.pendientesIds.filter(x => x !== id);
+      }
+    });
+    persist('pendientes');
+    persist('equipos');
   },
 };
 
@@ -8652,6 +8702,12 @@ function renderPendienteExpandido(p, refresh) {
   );
   headRow.appendChild(selEstado);
   headRow.appendChild(h('div', { style:{flex:1} }));
+  // FASE 3.4: posponer (snooze) — solo para pendientes no cerrados.
+  if (p.estado !== 'Cerrado') {
+    headRow.appendChild(h('button.btn.sm.ghost', { onclick: () => abrirModalPosponer(p, refresh) }, [
+      h('i.ti.ti-clock-hour-4'), 'Posponer',
+    ]));
+  }
   headRow.appendChild(h('button.btn.sm.ghost', { onclick: () => abrirModalEditarPendiente(p, refresh) }, [
     h('i.ti.ti-edit'), 'Editar',
   ]));
@@ -8664,6 +8720,14 @@ function renderPendienteExpandido(p, refresh) {
       refresh();
     } }, [ h('i.ti.ti-refresh'), 'Reabrir' ]));
   }
+  // FASE 3.4 / 3.12: eliminar pendiente, con confirmación.
+  headRow.appendChild(h('button.btn.sm.ghost.danger', { onclick: async () => {
+    const ok = await UI.dialog({ title:'Eliminar pendiente', message:`¿Eliminar este pendiente? "${(p.descripcion||'').slice(0,80)}". Esta acción no se puede deshacer.`, confirmText:'Eliminar', variant:'danger' });
+    if (!ok) return;
+    PENDIENTE.eliminar(p.id);
+    UI.toast('Pendiente eliminado.', 'warning');
+    refresh();
+  } }, [ h('i.ti.ti-trash'), 'Eliminar' ]));
   wrap.appendChild(headRow);
 
   // === Subtareas ===
@@ -8743,15 +8807,18 @@ function renderPendienteExpandido(p, refresh) {
 }
 
 function abrirModalNuevoPendiente() {
-  let snap = { descripcion:'', asignado: usuarioActual() || '', equipoUuid:'', vence: dateInputValue(addBusinessDays(new Date(), 3)) };
+  // FASE 3.4: el recordatorio admite fecha (requerida para el aviso) y hora opcional.
+  let snap = { descripcion:'', asignado: usuarioActual() || '', equipoUuid:'',
+    vence: dateInputValue(addBusinessDays(new Date(), 3)), hora:'' };
   UI.modal({
     title: 'Nuevo pendiente',
     size: 'sm',
     content: (body) => {
       body.appendChild(field('Descripción *', textareaCtl({ rows:3, oninput:(e)=> snap.descripcion = e.target.value })));
+      body.appendChild(field('Asignado a', selectTecnico(snap.asignado, { onchange:(e)=> snap.asignado = e.target.value })));
       body.appendChild(row('1fr 1fr', [
-        field('Asignado a', selectTecnico(snap.asignado, { onchange:(e)=> snap.asignado = e.target.value })),
-        field('Fecha de compromiso', dateCtl(snap.vence, { onchange:(e)=> snap.vence = e.target.value })),
+        field('Fecha de recordatorio', dateCtl(snap.vence, { onchange:(e)=> snap.vence = e.target.value })),
+        field('Hora (opcional)', h('input.input', { type:'time', value: snap.hora, onchange:(e)=> snap.hora = e.target.value })),
       ]));
       const opts = [{ value:'', label:'(sin equipo)' }, ...STATE.equipos.slice(0,500).map(e => ({ value: e.uuid, label: `${e.nombre} · ${e.serie || e.inventario || ''}` }))];
       body.appendChild(field('Equipo (opcional)', selectCtl(opts, '', { onchange:(e)=> snap.equipoUuid = e.target.value })));
@@ -8764,7 +8831,7 @@ function abrirModalNuevoPendiente() {
           descripcion: snap.descripcion.trim(),
           asignado: snap.asignado.trim(),
           equipoUuid: snap.equipoUuid || null,
-          vence: snap.vence ? isoFromDateInput(snap.vence) : null,
+          vence: snap.vence ? isoFromDateTime(snap.vence, snap.hora) : null,
         });
         UI.toast('Pendiente creado.', 'success');
         close('save');
@@ -8780,15 +8847,17 @@ function abrirModalEditarPendiente(p, refresh) {
     asignado:    p.asignado || '',
     equipoUuid:  p.equipoUuid || '',
     vence:       p.vence ? dateInputValue(p.vence) : '',
+    hora:        p.vence ? horaInputValue(p.vence) : '',
   };
   UI.modal({
     title: 'Editar pendiente',
     size: 'sm',
     content: (body) => {
       body.appendChild(field('Descripción *', textareaCtl({ rows:3, value: snap.descripcion, oninput:(e)=> snap.descripcion = e.target.value })));
+      body.appendChild(field('Asignado a', selectTecnico(snap.asignado, { onchange:(e)=> snap.asignado = e.target.value })));
       body.appendChild(row('1fr 1fr', [
-        field('Asignado a', selectTecnico(snap.asignado, { onchange:(e)=> snap.asignado = e.target.value })),
-        field('Fecha de compromiso', dateCtl(snap.vence, { onchange:(e)=> snap.vence = e.target.value })),
+        field('Fecha de recordatorio', dateCtl(snap.vence, { onchange:(e)=> snap.vence = e.target.value })),
+        field('Hora (opcional)', h('input.input', { type:'time', value: snap.hora, onchange:(e)=> snap.hora = e.target.value })),
       ]));
       const opts = [{ value:'', label:'(sin equipo)' }, ...STATE.equipos.slice(0,500).map(e => ({ value: e.uuid, label: `${e.nombre} · ${e.serie || e.inventario || ''}` }))];
       body.appendChild(field('Equipo', selectCtl(opts, snap.equipoUuid, { onchange:(e)=> snap.equipoUuid = e.target.value })));
@@ -8801,12 +8870,45 @@ function abrirModalEditarPendiente(p, refresh) {
           descripcion: snap.descripcion.trim(),
           asignado: snap.asignado,
           equipoUuid: snap.equipoUuid || null,
-          vence: snap.vence ? isoFromDateInput(snap.vence) : null,
+          vence: snap.vence ? isoFromDateTime(snap.vence, snap.hora) : null,
         });
         UI.toast('Pendiente actualizado.', 'success');
         close('save');
         refresh();
       }}, 'Guardar cambios'));
+    },
+  });
+}
+
+/** FASE 3.4 — modal para posponer (snooze) un pendiente con opciones rápidas. */
+function abrirModalPosponer(p, refresh) {
+  UI.modal({
+    title: 'Posponer pendiente',
+    sub: (p.descripcion || '').slice(0, 80),
+    size: 'sm',
+    content: (body, { close }) => {
+      const opciones = [
+        ['Mañana', new Date(Date.now() + 86400000)],
+        ['En 3 días hábiles', addBusinessDays(new Date(), 3)],
+        ['En 1 semana', new Date(Date.now() + 7 * 86400000)],
+      ];
+      opciones.forEach(([label, fecha]) => {
+        body.appendChild(h('button.btn', { style:{ display:'flex', width:'100%', justifyContent:'flex-start', marginBottom:'6px' }, onclick: () => {
+          PENDIENTE.posponer(p.id, fecha.toISOString());
+          UI.toast(`Pendiente pospuesto a ${fmt.date(fecha)}.`, 'success');
+          close('save'); refresh();
+        } }, [ h('i.ti.ti-clock-hour-4'), `${label} · ${fmt.date(fecha)}` ]));
+      });
+      body.appendChild(h('hr', { style:{ margin:'10px 0', border:0, borderTop:'.5px solid var(--line)' } }));
+      let fechaCustom = dateInputValue(p.vence || new Date());
+      body.appendChild(field('O elegí una fecha', dateCtl(fechaCustom, { onchange:(e)=> fechaCustom = e.target.value })));
+      body.appendChild(h('button.btn.primary', { style:{ marginTop:'8px' }, onclick: () => {
+        const iso = isoFromDateInput(fechaCustom);
+        if (!iso) { bus.emit('error', new Error('Fecha inválida.')); return; }
+        PENDIENTE.posponer(p.id, iso);
+        UI.toast(`Pendiente pospuesto a ${fmt.date(iso)}.`, 'success');
+        close('save'); refresh();
+      } }, [ h('i.ti.ti-check'), 'Posponer a esa fecha' ]));
     },
   });
 }
@@ -10099,6 +10201,7 @@ try {
     invListarVistas, invCrearVista, invRenombrarVista, invEliminarVista, pedirTexto,
     registrarExportacion, filtrosLegibles, abrirModalExportarInventario,
     pushEvento, describeEvento,
+    isoFromDateTime, horaInputValue, abrirModalPosponer,
   };
 } catch {}
 </script>

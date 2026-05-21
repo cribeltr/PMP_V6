@@ -502,6 +502,39 @@ function assert(cond, msg) { if (!cond) throw new Error(msg || 'aserción falló
     assert(/COMENTARIO: \(\) =>/.test(appSrc), 'describeEvento no maneja COMENTARIO');
   });
 
+  // ============================================================
+  // GRUPO M — Fase 3.4 (recordatorios: hora, posponer, eliminar)
+  // ============================================================
+  check('M-01', '3.4 · isoFromDateTime combina fecha y hora', () => {
+    const iso = P.isoFromDateTime('2026-05-20', '09:30');
+    const d = new Date(iso);
+    assert(d.getHours() === 9 && d.getMinutes() === 30, 'hora incorrecta: ' + iso);
+    const sinHora = new Date(P.isoFromDateTime('2026-05-20', ''));
+    assert(sinHora.getHours() === 12, 'sin hora debería ser mediodía');
+  });
+  check('M-02', '3.4 · PENDIENTE.posponer cambia la fecha y lo registra en el log', () => {
+    const p = P.PENDIENTE.crear({ descripcion: 'Pendiente snooze', vence: new Date().toISOString() });
+    const nueva = new Date(Date.now() + 5 * 86400000).toISOString();
+    P.PENDIENTE.posponer(p.id, nueva);
+    assert(p.vence === nueva, 'no cambió la fecha');
+    assert(p.log.some(l => /Pospuesto/.test(l.nota)), 'no quedó en el log');
+  });
+  check('M-03', '3.4 · PENDIENTE.eliminar quita el pendiente y limpia referencias', () => {
+    const e = P.STATE.equipos.find(x => !x.esSlot);
+    const p = P.PENDIENTE.crear({ descripcion: 'Pendiente a eliminar', equipoUuid: e.uuid });
+    assert(e.pendientesIds.includes(p.id), 'no se vinculó al equipo');
+    P.PENDIENTE.eliminar(p.id);
+    assert(!P.STATE.pendientes.some(x => x.id === p.id), 'el pendiente no se eliminó');
+    assert(!e.pendientesIds.includes(p.id), 'no se limpió la referencia en el equipo');
+  });
+  check('M-04', '3.4 · el modal de nuevo pendiente tiene campo de hora', () => {
+    cerrarModales();
+    P.abrirModalNuevoPendiente();
+    const m = modalActual();
+    assert(m && m.querySelector('input[type="time"]'), 'falta el campo de hora');
+    cerrarModales();
+  });
+
   // ---- reporte ----
   const ok = results.filter(r => r.ok).length;
   const fail = results.filter(r => !r.ok).length;
