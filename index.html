@@ -1418,6 +1418,7 @@ const STATE = {
   tecnicosOficiales: [],   // lista gestionada por el usuario (no proviene del maestro)
   diffIgnorados: {},       // { 'uuid:tipo:valor': true } — diferencias dejadas pasar en imports previos
   cambios: [],             // FASE 3.10 — log de cambios campo-a-campo de equipos
+  exportaciones: [],       // FASE 3.1 — registro de exportaciones a Excel
   view: 'dash',
   viewParams: {},
 };
@@ -1445,6 +1446,7 @@ function loadState() {
   STATE.tecnicosOficiales = STORAGE.read('tecnicosOficiales', []) || [];
   STATE.diffIgnorados     = STORAGE.read('diffIgnorados', {}) || {};
   STATE.cambios           = STORAGE.read('cambios', []) || [];
+  STATE.exportaciones     = STORAGE.read('exportaciones', []) || [];
 }
 
 function persist(slice) {
@@ -1456,6 +1458,7 @@ function persist(slice) {
   if (!slice || slice === 'tecnicosOficiales') STORAGE.write('tecnicosOficiales', STATE.tecnicosOficiales);
   if (!slice || slice === 'diffIgnorados')     STORAGE.write('diffIgnorados',     STATE.diffIgnorados);
   if (!slice || slice === 'cambios')           STORAGE.write('cambios',           STATE.cambios);
+  if (!slice || slice === 'exportaciones')     STORAGE.write('exportaciones',     STATE.exportaciones);
   // FASE 3.8: marca de datos modificados para el respaldo automático al cerrar.
   _datosModificados = true;
   bus.emit('state:change', slice);
@@ -4292,6 +4295,7 @@ function construirPayloadBackup() {
     tecnicosOficiales: STATE.tecnicosOficiales,
     diffIgnorados: STATE.diffIgnorados,
     cambios: STATE.cambios,
+    exportaciones: STATE.exportaciones,
   };
 }
 
@@ -4306,6 +4310,7 @@ function aplicarPayloadBackup(data) {
   STATE.tecnicosOficiales = Array.isArray(data.tecnicosOficiales) ? data.tecnicosOficiales : [];
   STATE.diffIgnorados     = data.diffIgnorados && typeof data.diffIgnorados === 'object' ? data.diffIgnorados : {};
   STATE.cambios           = Array.isArray(data.cambios) ? data.cambios : [];
+  STATE.exportaciones     = Array.isArray(data.exportaciones) ? data.exportaciones : [];
   persist();
 }
 
@@ -6345,7 +6350,7 @@ VIEWS.inv = {
         /* AJUSTE R8 A.1: el toolbar del Inventario muestra solo la acción contextual.
            Importar maestro y Backup viven en Configuración (card "Datos") y en el
            empty state cuando no hay equipos. */
-        { label: 'Exportar filtrado', icon: 'ti-file-export', onclick: () => exportarInventarioFiltrado() },
+        { label: 'Exportar filtrado', icon: 'ti-file-export', onclick: () => abrirModalExportarInventario() },
       ],
     });
     root.appendChild(headerEl);
@@ -7857,14 +7862,84 @@ function invGetPresets() {
 
 
 
+/* ============================================================
+   FASE 3.1 — Exportación filtrada: metadata, propósito y registro
+   ============================================================ */
+/** Traduce el objeto de filtros del Inventario a pares [etiqueta, valor] legibles. */
+function filtrosLegibles(f) {
+  if (!f) return [];
+  const L = {
+    q:'Búsqueda de texto', servicio:'Servicio', familia:'Familia', estado:'Estado',
+    empresaST:'Empresa ST', responsable:'Responsable', garantia:'Garantía',
+    tiempoEstado:'Tiempo en estado', pendientes:'Pendientes',
+    mpDesde:'MP desde', mpHasta:'MP hasta', gestionDesde:'Última gestión desde',
+    gestionHasta:'Última gestión hasta', periodo:'Período',
+  };
+  const out = [];
+  Object.entries(f).forEach(([k, v]) => {
+    if (!v || k === 'slot') return;
+    let val = String(v);
+    if (k === 'estado')   val = v === 'no_operativos_todos' ? 'No operativos (todos)' : (ESTADO_LABEL[v] || v);
+    if (k === 'garantia') val = v === 'si' ? 'En garantía' : 'Sin garantía';
+    if (k === 'pendientes') val = v === 'con' ? 'Con pendientes abiertos' : 'Sin pendientes abiertos';
+    if (k === 'tiempoEstado') val = `más de ${v} días`;
+    out.push([L[k] || k, val]);
+  });
+  return out;
+}
+
+/** FASE 3.1 — registra una exportación en el log interno. */
+function registrarExportacion({ tipo, archivo, conteo, filtros, destinatario, proposito }) {
+  STATE.exportaciones.push({
+    id: uuid(), ts: new Date().toISOString(),
+    tipo: tipo || 'inventario', archivo: archivo || '',
+    conteo: conteo || 0, filtros: filtros || 'Sin filtros',
+    destinatario: destinatario || '', proposito: proposito || '',
+  });
+  if (STATE.exportaciones.length > 500) {
+    STATE.exportaciones.splice(0, STATE.exportaciones.length - 500);
+  }
+  persist('exportaciones');
+}
+
+/** FASE 3.1 — modal previo a exportar: pide propósito y destinatario (opcionales). */
+function abrirModalExportarInventario() {
+  const lista = INV_LAST_FILTERED || STATE.equipos.slice();
+  if (!lista.length) {
+    UI.toast('No hay equipos para exportar con los filtros actuales.', 'warning');
+    return;
+  }
+  const snap = { destinatario: '', proposito: '' };
+  UI.modal({
+    title: 'Exportar inventario filtrado',
+    sub: `${fmt.number(lista.length)} equipos`,
+    size: 'sm',
+    content: (b) => {
+      b.appendChild(h('p', { style:{ margin:'0 0 12px', fontSize:'12.5px', color:'var(--ink-3)' } },
+        'Se exportan los equipos con los filtros activos. Estos datos son opcionales: quedan en la hoja "Metadata" del Excel y en el historial de exportaciones.'));
+      b.appendChild(field('Propósito', inputCtl({ placeholder:'p. ej. Reporte mensual, Solicitud de jefatura', oninput:(e)=> snap.proposito = e.target.value })));
+      b.appendChild(field('Destinatario', inputCtl({ placeholder:'p. ej. Jefatura SEC', oninput:(e)=> snap.destinatario = e.target.value })));
+    },
+    footer: (f, { close }) => {
+      f.appendChild(h('button.btn.ghost', { onclick: close }, 'Cancelar'));
+      f.appendChild(h('button.btn.primary', { onclick: () => { close('ok'); exportarInventarioFiltrado(snap); } }, [ h('i.ti.ti-file-export'), 'Exportar' ]));
+    },
+  });
+}
+
 /**
  * Exporta a Excel los equipos actualmente filtrados en Inventario.
- * Hojas: Equipos (filas filtradas) · Resumen (conteos) · Filtros aplicados.
+ * Hojas: Equipos (filas filtradas) · Resumen (conteos) · Metadata (propósito,
+ * destinatario, filtros legibles, conteo). Registra la exportación en el log.
  */
-async function exportarInventarioFiltrado() {
+async function exportarInventarioFiltrado(opts={}) {
   try {
     await ensureXLSX();
     const lista = INV_LAST_FILTERED || STATE.equipos.slice();
+    if (!lista.length) {
+      UI.toast('No hay equipos para exportar con los filtros actuales.', 'warning');
+      return;
+    }
     if (lista.length > 500) {
       const ok = await UI.dialog({ title:'Exportar Inventario', message:`Vas a exportar ${lista.length} equipos. ¿Continuamos?`, confirmText:'Exportar' });
       if (!ok) return;
@@ -7903,18 +7978,33 @@ async function exportarInventarioFiltrado() {
     Object.entries(byFam).sort((a,b) => b[1]-a[1]).slice(0,20).forEach(([k,v]) => resumen.push([k, v]));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resumen), 'Resumen');
 
-    // Hoja Filtros aplicados
+    // FASE 3.1 — Hoja Metadata (fecha, archivo, conteo, propósito, destinatario, filtros legibles)
     const f = INV_LAST_FILTROS || {};
-    const filtros = [['Filtro','Valor']];
-    Object.entries(f).forEach(([k,v]) => {
-      if (v) filtros.push([k, String(v)]);
-    });
-    filtros.push(['exportadoEn', new Date().toISOString()]);
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(filtros), 'Filtros aplicados');
-
     const filtroPrincipal = f.estado || f.servicio || f.familia || 'todos';
     const fecha = new Date().toISOString().slice(0,10);
-    XLSX.writeFile(wb, `Inventario_${filtroPrincipal}_${fecha}.xlsx`);
+    const filename = `Inventario_${String(filtroPrincipal).replace(/[^\w-]+/g,'_')}_${fecha}.xlsx`;
+    const filtrosLeg = filtrosLegibles(f);
+    const filtrosTexto = filtrosLeg.length ? filtrosLeg.map(([k,v]) => `${k}: ${v}`).join(' · ') : 'Sin filtros (toda la base)';
+    const metaSheet = [
+      ['Metadata de la exportación', ''],
+      ['Fecha y hora', fmt.datetime(new Date())],
+      ['Archivo', filename],
+      ['Equipos exportados', lista.length],
+      ['Propósito', opts.proposito || '—'],
+      ['Destinatario', opts.destinatario || '—'],
+      ['', ''],
+      ['Filtros aplicados', ''],
+      ...(filtrosLeg.length ? filtrosLeg : [['(sin filtros)', 'toda la base']]),
+    ];
+    const wsMeta = XLSX.utils.aoa_to_sheet(metaSheet);
+    wsMeta['!cols'] = [{ wch: 26 }, { wch: 48 }];
+    XLSX.utils.book_append_sheet(wb, wsMeta, 'Metadata');
+
+    XLSX.writeFile(wb, filename);
+    registrarExportacion({
+      tipo: 'inventario', archivo: filename, conteo: lista.length,
+      filtros: filtrosTexto, destinatario: opts.destinatario, proposito: opts.proposito,
+    });
     UI.toast(`Exportados ${lista.length} equipos.`, 'success');
   } catch (e) { bus.emit('error', e); }
 }
@@ -8736,8 +8826,41 @@ VIEWS.reportes = {
     sec3.appendChild(h('h3','Anexos imprimibles'));
     sec3.appendChild(renderAnexosBlock());
     root.appendChild(sec3);
+
+    // ===== FASE 3.1 — Historial de exportaciones =====
+    const sec4 = h('div.section');
+    sec4.appendChild(h('h3', 'Historial de exportaciones'));
+    sec4.appendChild(renderHistorialExportaciones());
+    root.appendChild(sec4);
   },
 };
+
+/** FASE 3.1 — tarjeta con el registro de exportaciones a Excel. */
+function renderHistorialExportaciones() {
+  const card = h('div.card');
+  const exps = STATE.exportaciones.slice().sort((a, b) => new Date(b.ts) - new Date(a.ts));
+  if (!exps.length) {
+    card.appendChild(h('div', { style:{ color:'var(--ink-3)', fontSize:'12.5px' } },
+      'Aún no se registraron exportaciones. Cada exportación filtrada del Inventario queda registrada acá.'));
+    return card;
+  }
+  const tbl = h('table.dt');
+  tbl.innerHTML = `<thead><tr><th>Fecha/hora</th><th>Archivo</th><th>Equipos</th><th>Propósito</th><th>Destinatario</th><th>Filtros</th></tr></thead>`;
+  const tb = h('tbody');
+  exps.slice(0, 200).forEach(x => {
+    tb.appendChild(h('tr', [
+      h('td.col-mono', fmt.datetime(x.ts)),
+      h('td.wrap-2', x.archivo || '—'),
+      h('td', fmt.number(x.conteo)),
+      h('td', x.proposito || '—'),
+      h('td', x.destinatario || '—'),
+      h('td.wrap-2', { style:{ color:'var(--ink-3)', fontSize:'11.5px' } }, x.filtros || 'Sin filtros'),
+    ]));
+  });
+  tbl.appendChild(tb);
+  card.appendChild(h('div.table-wrap', [ tbl ]));
+  return card;
+}
 
 function reporteCard(title, desc, icon, onclick) {
   return h('div.card', { style:{cursor:'pointer'}, onclick }, [
@@ -9950,6 +10073,7 @@ try {
     capacidadStorage, autobackupAlArrancar, confirmarConPalabra,
     registrarCambio, cambiosDeEquipo, buscarLibre, openFicha,
     invListarVistas, invCrearVista, invRenombrarVista, invEliminarVista, pedirTexto,
+    registrarExportacion, filtrosLegibles, abrirModalExportarInventario,
   };
 } catch {}
 </script>

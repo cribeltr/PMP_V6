@@ -458,6 +458,30 @@ function assert(cond, msg) { if (!cond) throw new Error(msg || 'aserción falló
       'meta=' + (meta ? meta.textContent : 'ausente'));
   });
 
+  // ============================================================
+  // GRUPO K — Fase 3.1 (exportación filtrada: metadata y registro)
+  // ============================================================
+  check('K-01', '3.1 · registrarExportacion agrega una entrada al log', () => {
+    const n0 = P.STATE.exportaciones.length;
+    P.registrarExportacion({ tipo:'inventario', archivo:'prueba.xlsx', conteo:12, filtros:'Estado: Operativo', proposito:'Test', destinatario:'QA' });
+    assert(P.STATE.exportaciones.length === n0 + 1, 'no creció el log');
+    const last = P.STATE.exportaciones[P.STATE.exportaciones.length - 1];
+    assert(last.conteo === 12 && last.proposito === 'Test', JSON.stringify(last));
+  });
+  check('K-02', '3.1 · filtrosLegibles traduce los filtros a texto legible', () => {
+    const leg = P.filtrosLegibles({ estado:'ServicioTecnico', garantia:'si' });
+    assert(leg.some(p => p[0] === 'Estado' && /servicio/i.test(p[1])), 'no traduce estado');
+    assert(leg.some(p => p[0] === 'Garantía' && /garant/i.test(p[1])), 'no traduce garantía');
+  });
+  check('K-03', '3.1 · exportaciones se incluye en el respaldo', () => {
+    assert('exportaciones' in P.construirPayloadBackup(), 'falta exportaciones en el payload');
+  });
+  check('K-04', '3.1 · Reportes muestra el historial de exportaciones', () => {
+    P.Router.go('reportes');
+    assert(/Historial de exportaciones/.test(doc.querySelector('#view').textContent),
+      'no aparece la sección de historial de exportaciones');
+  });
+
   // ---- reporte ----
   const ok = results.filter(r => r.ok).length;
   const fail = results.filter(r => !r.ok).length;
