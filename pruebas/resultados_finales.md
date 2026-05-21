@@ -48,11 +48,28 @@
 
 ---
 
+## Fase 3 — pruebas añadidas (3.8 respaldo automático · 3.12 confirmación escrita)
+
+| ID | Resultado | Descripción |
+|---|---|---|
+| G-01 | PASA | 3.8 · `guardarAutobackup` crea un snapshot y queda listado |
+| G-02 | PASA | 3.8 · la rotación FIFO conserva como máximo 7 snapshots |
+| G-03 | PASA | 3.8 · `capacidadStorage` informa uso y porcentaje |
+| G-04 | PASA | 3.8 · `eliminarAutobackup` quita un snapshot puntual |
+| G-05 | PASA | 3.12 · `confirmarConPalabra` bloquea el botón hasta escribir la palabra |
+| G-06 | PASA | 3.12 · `importBackup` y "borrar datos" usan confirmación escrita |
+| G-07 | PASA | 3.8 · Configuración muestra la tarjeta de respaldos automáticos |
+
+**Cierre del avance de Fase 3 (3.8 + 3.12): 41 / 41 PASA · 0 FALLA.**
+
+---
+
 ## Historial de ejecuciones
 
 | Fecha | Fase | PASA | FALLA | Nota |
 |---|---|---|---|---|
 | 2026-05-21 | Cierre Fase 1 | 27 | 0 | 8 casos del contrato pasaron de FALLA a PASA; 0 regresiones. |
 | 2026-05-21 | Cierre Fase 2 | 34 | 0 | +7 pruebas de accesibilidad/navegación; 0 regresiones sobre las 27 previas. |
+| 2026-05-21 | Avance Fase 3 (3.8, 3.12) | 41 | 0 | +7 pruebas de respaldo automático y confirmación escrita; 0 regresiones. |
 
 > Este archivo se actualiza en cada cierre de fase con el resultado de la última corrida completa del arnés.
