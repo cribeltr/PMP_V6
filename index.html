@@ -301,6 +301,17 @@ hr { border: 0; border-top: .5px solid var(--line); margin: 0; }
   color: var(--ink-2);
 }
 
+/* FASE 3.5 — botón de campana del centro de alertas */
+.topbar-icon-btn { position: relative; padding: 5px 8px; }
+.alert-badge {
+  position: absolute; top: -5px; right: -5px;
+  background: var(--danger); color: #fff;
+  font-size: 9.5px; font-weight: 500; line-height: 1;
+  min-width: 15px; height: 15px; padding: 0 3px;
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+}
+
 /* FASE 3.11 — caja de búsqueda libre del header */
 .header-search { position: relative; flex: 0 1 320px; min-width: 130px; }
 .header-search .search { width: 100%; }
@@ -1028,6 +1039,10 @@ hr { border: 0; border-top: .5px solid var(--line); margin: 0; }
         </div>
         <div class="header-search-results" id="headerSearchResults"></div>
       </div>
+      <!-- FASE 3.5: centro de alertas -->
+      <button class="cmdk-hint topbar-icon-btn" id="btnAlertas" title="Centro de alertas" aria-label="Centro de alertas">
+        <i class="ti ti-bell"></i>
+      </button>
       <button class="cmdk-hint" id="openCmdk" title="Comandos (Ctrl+K)">
         <i class="ti ti-command"></i>
         <kbd>Ctrl K</kbd>
@@ -1419,6 +1434,7 @@ const STATE = {
   diffIgnorados: {},       // { 'uuid:tipo:valor': true } — diferencias dejadas pasar en imports previos
   cambios: [],             // FASE 3.10 — log de cambios campo-a-campo de equipos
   exportaciones: [],       // FASE 3.1 — registro de exportaciones a Excel
+  alertasEstado: {},       // FASE 3.5 — { alertId: 'reconocida' | 'resuelta' }
   view: 'dash',
   viewParams: {},
 };
@@ -1447,6 +1463,7 @@ function loadState() {
   STATE.diffIgnorados     = STORAGE.read('diffIgnorados', {}) || {};
   STATE.cambios           = STORAGE.read('cambios', []) || [];
   STATE.exportaciones     = STORAGE.read('exportaciones', []) || [];
+  STATE.alertasEstado     = STORAGE.read('alertasEstado', {}) || {};
 }
 
 function persist(slice) {
@@ -1459,6 +1476,7 @@ function persist(slice) {
   if (!slice || slice === 'diffIgnorados')     STORAGE.write('diffIgnorados',     STATE.diffIgnorados);
   if (!slice || slice === 'cambios')           STORAGE.write('cambios',           STATE.cambios);
   if (!slice || slice === 'exportaciones')     STORAGE.write('exportaciones',     STATE.exportaciones);
+  if (!slice || slice === 'alertasEstado')     STORAGE.write('alertasEstado',     STATE.alertasEstado);
   // FASE 3.8: marca de datos modificados para el respaldo automático al cerrar.
   _datosModificados = true;
   bus.emit('state:change', slice);
@@ -4352,6 +4370,7 @@ function construirPayloadBackup() {
     diffIgnorados: STATE.diffIgnorados,
     cambios: STATE.cambios,
     exportaciones: STATE.exportaciones,
+    alertasEstado: STATE.alertasEstado,
   };
 }
 
@@ -4367,6 +4386,7 @@ function aplicarPayloadBackup(data) {
   STATE.diffIgnorados     = data.diffIgnorados && typeof data.diffIgnorados === 'object' ? data.diffIgnorados : {};
   STATE.cambios           = Array.isArray(data.cambios) ? data.cambios : [];
   STATE.exportaciones     = Array.isArray(data.exportaciones) ? data.exportaciones : [];
+  STATE.alertasEstado     = data.alertasEstado && typeof data.alertasEstado === 'object' ? data.alertasEstado : {};
   persist();
 }
 
@@ -5771,6 +5791,136 @@ function actualizarBadgesPendientes() {
   navItem.appendChild(cont);
 }
 
+/* ============================================================
+   FASE 3.5 — Centro de alertas automáticas
+   ============================================================ */
+const ALERTAS_CONFIG_DEFAULT = { diasMismoEstado: 30, diasSinActualizar: 15, diasPorVencer: 3 };
+const ALERTAS_CONFIG_KEY = 'pmp.v3.alertasConfig';
+
+function alertasConfig() {
+  try {
+    return Object.assign({}, ALERTAS_CONFIG_DEFAULT, JSON.parse(localStorage.getItem(ALERTAS_CONFIG_KEY) || '{}'));
+  } catch { return Object.assign({}, ALERTAS_CONFIG_DEFAULT); }
+}
+function setAlertasConfig(cfg) {
+  try { localStorage.setItem(ALERTAS_CONFIG_KEY, JSON.stringify(cfg)); } catch (e) { console.error(e); }
+}
+
+/**
+ * Calcula las alertas activas según las reglas configurables. Las alertas son
+ * derivadas (no se almacenan); su id es determinístico para poder reconocerlas
+ * o resolverlas de forma persistente. Devuelve la lista ordenada por prioridad.
+ */
+function calcularAlertas() {
+  const cfg = alertasConfig();
+  const hoy = Date.now();
+  const out = [];
+  STATE.equipos.forEach(e => {
+    if (e.esSlot || e.estado === 'DeBaja') return;
+    // Regla 1: equipo en el mismo estado no-operativo por más de N días.
+    if (ESTADOS_NO_OPERATIVOS.includes(e.estado) && e.estadoDesde) {
+      const dias = diasEnEstadoActual(e);
+      if (dias != null && dias > cfg.diasMismoEstado) {
+        out.push({ id: `estado:${e.uuid}:${e.estadoDesde}`, tipo: 'estado', prioridad: 2,
+          texto: `${e.nombre || 'Equipo'} lleva ${Math.floor(dias)} días en ${ESTADO_LABEL[e.estado]}.`,
+          equipoUuid: e.uuid });
+      }
+    }
+    // Regla 2: equipo sin ninguna actualización en más de N días.
+    const ug = ultimaGestion(e);
+    if (ug) {
+      const diasSin = Math.floor((hoy - ug.getTime()) / 86400000);
+      if (diasSin > cfg.diasSinActualizar) {
+        out.push({ id: `inactivo:${e.uuid}:${ug.toISOString().slice(0,10)}`, tipo: 'inactivo', prioridad: 1,
+          texto: `${e.nombre || 'Equipo'} sin actualización hace ${diasSin} días.`,
+          equipoUuid: e.uuid });
+      }
+    }
+  });
+  STATE.pendientes.forEach(p => {
+    if (p.estado === 'Cerrado' || !p.vence) return;
+    const t = new Date(p.vence).getTime();
+    if (isNaN(t)) return;
+    // Regla 3: pendiente vencido.
+    if (t < hoy) {
+      out.push({ id: `pend-vencido:${p.id}`, tipo: 'pend-vencido', prioridad: 3,
+        texto: `Pendiente vencido: ${p.descripcion || '(sin descripción)'}`,
+        pendienteId: p.id, equipoUuid: p.equipoUuid || null });
+    // Regla 4: pendiente por vencer en los próximos N días.
+    } else if (t - hoy <= cfg.diasPorVencer * 86400000) {
+      out.push({ id: `pend-porvencer:${p.id}`, tipo: 'pend-porvencer', prioridad: 1,
+        texto: `Pendiente por vencer: ${p.descripcion || '(sin descripción)'}`,
+        pendienteId: p.id, equipoUuid: p.equipoUuid || null });
+    }
+  });
+  out.forEach(a => { a.estadoAlerta = STATE.alertasEstado[a.id] || 'activa'; });
+  return out
+    .filter(a => a.estadoAlerta !== 'resuelta')
+    .sort((a, b) => b.prioridad - a.prioridad);
+}
+
+/** Alertas que cuentan para el badge de la campana (activas, no reconocidas). */
+function alertasActivas() {
+  return calcularAlertas().filter(a => a.estadoAlerta === 'activa');
+}
+
+function reconocerAlerta(id) { STATE.alertasEstado[id] = 'reconocida'; persist('alertasEstado'); }
+function resolverAlerta(id)  { STATE.alertasEstado[id] = 'resuelta';   persist('alertasEstado'); }
+
+/** Actualiza el badge del ícono de campana en el topbar. */
+function actualizarCampanaAlertas() {
+  const btn = document.getElementById('btnAlertas');
+  if (!btn) return;
+  const n = alertasActivas().length;
+  let badge = btn.querySelector('.alert-badge');
+  if (n > 0) {
+    if (!badge) { badge = h('span.alert-badge'); btn.appendChild(badge); }
+    badge.textContent = n > 99 ? '99+' : String(n);
+  } else if (badge) {
+    badge.remove();
+  }
+}
+
+/** FASE 3.5 — panel lateral (drawer) con el centro de alertas. */
+function abrirCentroAlertas() {
+  const iconos = { estado:'ti-alert-octagon', inactivo:'ti-clock-pause', 'pend-vencido':'ti-calendar-x', 'pend-porvencer':'ti-calendar-due' };
+  const kinds  = { estado:'warning', inactivo:'info', 'pend-vencido':'danger', 'pend-porvencer':'warning' };
+  UI.drawer({
+    title: 'Centro de alertas',
+    content: (body, { close }) => {
+      function pintar() {
+        body.innerHTML = '';
+        const alertas = calcularAlertas();
+        if (!alertas.length) {
+          body.appendChild(emptyState({ icon:'ti-bell-check', title:'Sin alertas activas', desc:'No hay equipos ni pendientes que requieran atención según las reglas configuradas.' }));
+          return;
+        }
+        body.appendChild(h('p', { style:{ margin:'0 0 12px', fontSize:'12px', color:'var(--ink-3)' } },
+          `${alertas.length} alerta${alertas.length === 1 ? '' : 's'} · ordenadas por prioridad. Configurá las reglas en Configuración → Alertas.`));
+        alertas.forEach(a => {
+          const reconocida = a.estadoAlerta === 'reconocida';
+          const card = h('div.card', { style:{ marginBottom:'8px', opacity: reconocida ? '.6' : '1' } }, [
+            h('div', { style:{ display:'flex', gap:'8px', alignItems:'flex-start' } }, [
+              h('i.ti', { class: 'ti ' + (iconos[a.tipo] || 'ti-alert-circle'), style:{ color:`var(--${kinds[a.tipo]||'info'})`, fontSize:'18px', flexShrink:0 } }),
+              h('div', { style:{ flex:1, minWidth:0 } }, [
+                h('div', { style:{ fontSize:'12.5px', color:'var(--ink)' } }, a.texto),
+                reconocida ? h('div', { style:{ fontSize:'11px', color:'var(--ink-3)', marginTop:'2px' } }, 'Reconocida') : null,
+              ]),
+            ]),
+            h('div', { style:{ display:'flex', gap:'6px', marginTop:'8px', flexWrap:'wrap' } }, [
+              a.equipoUuid ? h('button.btn.sm.ghost', { onclick: () => { close(); openFicha(a.equipoUuid); } }, [ h('i.ti.ti-eye'), 'Ver equipo' ]) : null,
+              a.pendienteId ? h('button.btn.sm.ghost', { onclick: () => { close(); UI_PEND.focusId = a.pendienteId; Router.go('tareas'); } }, [ h('i.ti.ti-checklist'), 'Ver pendiente' ]) : null,
+              !reconocida ? h('button.btn.sm.ghost', { onclick: () => { reconocerAlerta(a.id); actualizarCampanaAlertas(); pintar(); } }, [ h('i.ti.ti-eye-check'), 'Reconocer' ]) : null,
+              h('button.btn.sm', { onclick: () => { resolverAlerta(a.id); actualizarCampanaAlertas(); pintar(); } }, [ h('i.ti.ti-check'), 'Resolver' ]),
+            ]),
+          ]);
+          body.appendChild(card);
+        });
+      }
+      pintar();
+    },
+  });
+}
 
 /* ============================================================
    DOMAIN · contactos por servicio
@@ -9526,6 +9676,34 @@ VIEWS.actividad = {
 };
 
 /** FASE 3.8 — tarjeta "Respaldos automáticos y almacenamiento" para Configuración. */
+/** FASE 3.5 — tarjeta de configuración de las reglas de alerta. */
+function renderCardAlertas() {
+  const card = h('div.card', { style:{ marginBottom:'14px' } });
+  card.appendChild(h('div.card-h', [ h('h3', 'Alertas automáticas'), h('span.sub', 'Reglas del centro de alertas') ]));
+  card.appendChild(h('p', { style:{ color:'var(--ink-3)', fontSize:'12px', margin:'0 0 10px' } },
+    'Ajustá los umbrales de cada regla. Los cambios se aplican de inmediato sobre el ícono de campana del encabezado.'));
+  const cfg = alertasConfig();
+  function campoNum(label, key, hint) {
+    const inp = h('input.input', { type:'number', min:1, max:365, value: cfg[key], style:{ maxWidth:'110px' },
+      onchange: (e) => {
+        const v = Math.max(1, Math.min(365, Number(e.target.value) || cfg[key]));
+        cfg[key] = v; e.target.value = v;
+        setAlertasConfig(cfg);
+        actualizarCampanaAlertas();
+        UI.toast('Regla de alerta actualizada.', 'success');
+      } });
+    return field(label, inp, hint);
+  }
+  const grid = h('div', { style:{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:'12px' } }, [
+    campoNum('Días en el mismo estado', 'diasMismoEstado', 'Alerta si un equipo lleva más de N días en un estado no-operativo.'),
+    campoNum('Días sin actualización', 'diasSinActualizar', 'Alerta si un equipo no registra actividad hace más de N días.'),
+    campoNum('Días para "por vencer"', 'diasPorVencer', 'Alerta de pendientes que vencen dentro de los próximos N días.'),
+  ]);
+  card.appendChild(grid);
+  return card;
+}
+
+/** FASE 3.8 — tarjeta "Respaldos automáticos y almacenamiento" para Configuración. */
 function renderCardRespaldos() {
   const card = h('div.card', { style:{ marginBottom:'14px' } });
   const cap = capacidadStorage();
@@ -9613,6 +9791,9 @@ VIEWS.config = {
 
     // FASE 3.8: tarjeta de respaldos automáticos y capacidad de almacenamiento.
     root.appendChild(renderCardRespaldos());
+
+    // FASE 3.5: configuración de las reglas de alerta.
+    root.appendChild(renderCardAlertas());
 
     // === Técnicos oficiales del SEC ===
     const cardTec = h('div.card', { style:{ marginBottom:'14px' } });
@@ -10115,11 +10296,15 @@ function boot() {
     $('#navScrim').addEventListener('click', cerrarNavMovil);
     // FASE 3.11: caja de búsqueda libre del header.
     initHeaderSearch();
+    // FASE 3.5: centro de alertas.
+    $('#btnAlertas').addEventListener('click', abrirCentroAlertas);
     bus.on('state:change', (slice) => {
       renderSessionChip();
       if (!slice || slice === 'pendientes') {
         try { actualizarBadgesPendientes(); } catch {}
       }
+      // FASE 3.5: el conteo de la campana se recalcula ante cualquier cambio de estado.
+      try { actualizarCampanaAlertas(); } catch {}
     });
 
     // Periodic chip update for REC events counter
@@ -10155,6 +10340,8 @@ function boot() {
       try { actualizarBadgesPendientes(); } catch (e) { console.error(e); }
       // 5) FASE 3.8: respaldo automático de sesión (uno cada 24 h).
       try { autobackupAlArrancar(); } catch (e) { console.error(e); }
+      // 6) FASE 3.5: badge del centro de alertas.
+      try { actualizarCampanaAlertas(); } catch (e) { console.error(e); }
     }, 600);
   } catch (e) {
     console.error(e);
@@ -10202,6 +10389,8 @@ try {
     registrarExportacion, filtrosLegibles, abrirModalExportarInventario,
     pushEvento, describeEvento,
     isoFromDateTime, horaInputValue, abrirModalPosponer,
+    calcularAlertas, alertasActivas, reconocerAlerta, resolverAlerta,
+    alertasConfig, setAlertasConfig, abrirCentroAlertas, actualizarCampanaAlertas,
   };
 } catch {}
 </script>

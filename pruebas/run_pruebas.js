@@ -535,6 +535,46 @@ function assert(cond, msg) { if (!cond) throw new Error(msg || 'aserción falló
     cerrarModales();
   });
 
+  // ============================================================
+  // GRUPO N — Fase 3.5 (centro de alertas automáticas)
+  // ============================================================
+  check('N-01', '3.5 · calcularAlertas detecta equipos y pendientes en alerta', () => {
+    const alertas = P.calcularAlertas();
+    assert(alertas.length > 0, 'no se detectó ninguna alerta sobre el dataset');
+    assert(alertas.every(a => a.id && a.tipo && a.texto), 'alerta mal formada');
+  });
+  check('N-02', '3.5 · resolverAlerta saca la alerta del listado', () => {
+    const a = P.calcularAlertas()[0];
+    P.resolverAlerta(a.id);
+    assert(!P.calcularAlertas().some(x => x.id === a.id), 'la alerta resuelta sigue apareciendo');
+  });
+  check('N-03', '3.5 · reconocerAlerta la deja fuera del conteo de la campana', () => {
+    const a = P.calcularAlertas().find(x => x.estadoAlerta === 'activa');
+    assert(a, 'no hay alertas activas');
+    P.reconocerAlerta(a.id);
+    assert(!P.alertasActivas().some(x => x.id === a.id), 'la alerta reconocida sigue contando');
+  });
+  check('N-04', '3.5 · la campana del topbar refleja el conteo de alertas activas', () => {
+    P.actualizarCampanaAlertas();
+    const btn = doc.querySelector('#btnAlertas');
+    assert(btn, 'falta el botón de campana');
+    const badge = btn.querySelector('.alert-badge');
+    const n = P.alertasActivas().length;
+    if (n > 0) assert(badge && badge.textContent, 'no hay badge con alertas activas');
+  });
+  check('N-05', '3.5 · las reglas de alerta son configurables', () => {
+    const orig = P.alertasConfig();
+    P.setAlertasConfig(Object.assign({}, orig, { diasMismoEstado: 999 }));
+    assert(P.alertasConfig().diasMismoEstado === 999, 'no se guardó la configuración');
+    P.setAlertasConfig(orig); // restaurar
+  });
+  check('N-06', '3.5 · abrirCentroAlertas abre el panel lateral', () => {
+    cerrarModales();
+    P.abrirCentroAlertas();
+    assert(doc.querySelector('#modals .backdrop .drawer'), 'no se abrió el drawer del centro de alertas');
+    cerrarModales();
+  });
+
   // ---- reporte ----
   const ok = results.filter(r => r.ok).length;
   const fail = results.filter(r => !r.ok).length;
