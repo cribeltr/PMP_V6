@@ -205,15 +205,17 @@ function assert(cond, msg) { if (!cond) throw new Error(msg || 'aserción falló
   // ============================================================
   // GRUPO D — Aserciones sobre el código fuente (lo no accesible en runtime)
   // ============================================================
-  check('D-B03a', 'B-03 · exportBackup incluye tecnicosOficiales y diffIgnorados', () => {
-    const blk = appSrc.slice(appSrc.indexOf('function exportBackup'), appSrc.indexOf('function exportBackup') + 600);
-    assert(/tecnicosOficiales:\s*STATE\.tecnicosOficiales/.test(blk), 'falta tecnicosOficiales en el payload');
-    assert(/diffIgnorados:\s*STATE\.diffIgnorados/.test(blk), 'falta diffIgnorados en el payload');
+  check('D-B03a', 'B-03 · construirPayloadBackup incluye tecnicosOficiales y diffIgnorados', () => {
+    const p = P.construirPayloadBackup();
+    assert('tecnicosOficiales' in p && 'diffIgnorados' in p, 'faltan slices en el payload del respaldo');
   });
-  check('D-B03b', 'B-03 · importBackup restaura tecnicosOficiales y diffIgnorados', () => {
-    const blk = appSrc.slice(appSrc.indexOf('async function importBackup'), appSrc.indexOf('async function importBackup') + 2400);
-    assert(/STATE\.tecnicosOficiales\s*=/.test(blk), 'importBackup no restaura tecnicosOficiales');
-    assert(/STATE\.diffIgnorados\s*=/.test(blk), 'importBackup no restaura diffIgnorados');
+  check('D-B03b', 'B-03 · aplicarPayloadBackup restaura tecnicosOficiales y diffIgnorados', () => {
+    const payload = P.construirPayloadBackup();
+    payload.tecnicosOficiales = ['PRUEBA-RESTAURA'];
+    payload.diffIgnorados = { 'clave-prueba': { ts: 'x' } };
+    P.aplicarPayloadBackup(payload);
+    assert(P.STATE.tecnicosOficiales.includes('PRUEBA-RESTAURA'), 'no restauró tecnicosOficiales');
+    assert(P.STATE.diffIgnorados['clave-prueba'], 'no restauró diffIgnorados');
   });
   check('D-B06', 'B-06 · renderCumplimientoSidecar recibe el mes por parámetro', () => {
     assert(/function renderCumplimientoSidecar\(mes\)/.test(appSrc), 'la función no recibe parámetro mes');
@@ -300,6 +302,56 @@ function assert(cond, msg) { if (!cond) throw new Error(msg || 'aserción falló
   check('F-07', 'El sistema de diseño define escalas de espaciado y tipografía', () => {
     assert(/--sp-1:\s*4px/.test(html) && /--fs-base:\s*13px/.test(html),
       'faltan los tokens de diseño');
+  });
+
+  // ============================================================
+  // GRUPO G — Fase 3.8 (respaldo automático) y 3.12 (confirmación escrita)
+  // ============================================================
+  check('G-01', '3.8 · guardarAutobackup crea un snapshot y queda listado', () => {
+    const n0 = P.listarAutobackups().length;
+    const s = P.guardarAutobackup('prueba');
+    assert(s && s.id, 'no devolvió el snapshot');
+    const lista = P.listarAutobackups();
+    assert(lista.some(x => x.id === s.id), 'el snapshot no quedó en la lista');
+    assert(lista.length >= Math.min(n0 + 1, 7), 'lista=' + lista.length);
+  });
+  check('G-02', '3.8 · la rotación FIFO conserva como máximo 7 snapshots', () => {
+    for (let i = 0; i < 10; i++) P.guardarAutobackup('rot-' + i);
+    assert(P.listarAutobackups().length <= 7, 'snapshots=' + P.listarAutobackups().length);
+  });
+  check('G-03', '3.8 · capacidadStorage informa uso y porcentaje', () => {
+    const c = P.capacidadStorage();
+    assert(typeof c.usado === 'number' && typeof c.pct === 'number' && c.pct >= 0 && c.pct <= 100,
+      JSON.stringify(c));
+  });
+  check('G-04', '3.8 · eliminarAutobackup quita un snapshot puntual', () => {
+    const s = P.guardarAutobackup('a-borrar');
+    P.eliminarAutobackup(s.id);
+    assert(!P.listarAutobackups().some(x => x.id === s.id), 'el snapshot no se eliminó');
+  });
+  check('G-05', '3.12 · confirmarConPalabra deshabilita el botón hasta escribir la palabra', () => {
+    cerrarModales();
+    P.confirmarConPalabra({ title: 'Prueba', message: 'msg', palabra: 'IMPORTAR', confirmText: 'OK-PRUEBA' });
+    const m = modalActual();
+    assert(m, 'no se abrió el modal');
+    const btn = [...m.querySelectorAll('.modal-f button')].find(b => /OK-PRUEBA/.test(b.textContent));
+    assert(btn && btn.disabled, 'el botón debería arrancar deshabilitado');
+    const inp = m.querySelector('.field input');
+    inp.value = 'otra cosa'; inp.dispatchEvent(new window.Event('input', { bubbles: true }));
+    assert(btn.disabled, 'no debería habilitarse con texto incorrecto');
+    inp.value = 'IMPORTAR'; inp.dispatchEvent(new window.Event('input', { bubbles: true }));
+    assert(!btn.disabled, 'debería habilitarse al escribir la palabra exacta');
+    cerrarModales();
+  });
+  check('G-06', '3.12 · importBackup y "borrar datos" usan confirmación escrita', () => {
+    const imp = appSrc.slice(appSrc.indexOf('async function importBackup'), appSrc.indexOf('async function importBackup') + 1400);
+    assert(/confirmarConPalabra/.test(imp), 'importBackup no usa confirmarConPalabra');
+    assert(/confirmarConPalabra[\s\S]{0,400}ELIMINAR/.test(appSrc), '"borrar datos" no usa confirmación escrita');
+  });
+  check('G-07', '3.8 · Configuración muestra la tarjeta de respaldos automáticos', () => {
+    P.Router.go('config');
+    assert(/Respaldos automáticos/.test(doc.querySelector('#view').textContent),
+      'la tarjeta de respaldos no aparece en Configuración');
   });
 
   // ---- reporte ----
