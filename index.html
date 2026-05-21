@@ -29,7 +29,9 @@
   --paper-3:      #efeee9;
   --ink:          #1f1d18;
   --ink-2:        #45413a;
-  --ink-3:        #7a766c;
+  /* AJUSTE FASE 2: --ink-3 oscurecido para cumplir contraste WCAG AA (>=4.5:1)
+     sobre --paper en texto pequeño (antes #7a766c quedaba ~4.2:1). */
+  --ink-3:        #6e6a60;
   --ink-4:        #aaa498;
   --line:         rgba(0,0,0,.08);
   --line-2:       rgba(0,0,0,.14);
@@ -68,6 +70,23 @@
   --z-modal:   300;
   --z-toast:   400;
   --z-cmdk:    500;
+
+  /* AJUSTE FASE 2 — sistema de diseño explícito.
+     Escala de espaciado con base 4px (úsese en reglas CSS nuevas o revisadas). */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  /* Escala tipográfica modular — 6 tamaños. Reemplaza la dispersión previa
+     (~13 tamaños distintos detectada en la auditoría 0.3). */
+  --fs-xs:   11px;
+  --fs-sm:   12px;
+  --fs-base: 13px;
+  --fs-md:   15px;
+  --fs-lg:   18px;
+  --fs-xl:   24px;
 }
 
 :root[data-theme="dark"] {
@@ -903,10 +922,28 @@ hr { border: 0; border-top: .5px solid var(--line); margin: 0; }
 .banner .grow { flex: 1; }
 .banner button.btn { background: rgba(255,255,255,.6); }
 
+/* AJUSTE FASE 2: botón hamburguesa — solo visible en móvil. */
+.menu-toggle { display: none; }
+.nav-scrim   { display: none; }
+
 /* Responsive */
 @media (max-width: 900px) {
   .app { grid-template-columns: 1fr; }
-  .sidebar { display: none; }
+  /* AJUSTE FASE 2: antes la sidebar simplemente desaparecía en móvil y no
+     quedaba forma de navegar salvo el command palette. Ahora se convierte en
+     un panel lateral (drawer) que se abre con el botón hamburguesa del topbar. */
+  .sidebar {
+    display: none;
+    position: fixed; top: 0; left: 0; bottom: 0;
+    width: 250px; z-index: var(--z-drawer);
+    box-shadow: var(--shadow-3);
+  }
+  .app.nav-open .sidebar { display: flex; }
+  .app.nav-open .nav-scrim {
+    display: block; position: fixed; inset: 0;
+    background: var(--backdrop); z-index: calc(var(--z-drawer) - 1);
+  }
+  .menu-toggle { display: inline-flex; }
   .view { padding: 16px; }
   .dl { grid-template-columns: 1fr; gap: 2px 0; }
   .grilla { grid-template-columns: repeat(6, 1fr); }
@@ -944,6 +981,9 @@ hr { border: 0; border-top: .5px solid var(--line); margin: 0; }
 
   <main class="main">
     <header class="topbar">
+      <button class="btn icon ghost menu-toggle" id="menuToggle" title="Abrir menú" aria-label="Abrir menú de navegación">
+        <i class="ti ti-menu-2"></i>
+      </button>
       <h1 id="topbarTitle">Dashboard</h1>
       <span class="sep">·</span>
       <span class="breadcrumb" id="topbarSub"></span>
@@ -956,6 +996,7 @@ hr { border: 0; border-top: .5px solid var(--line); margin: 0; }
     </header>
     <section class="view" id="view"></section>
   </main>
+  <div class="nav-scrim" id="navScrim"></div>
 </div>
 
 <div id="bootScreen" style="display:grid;place-items:center;min-height:100vh;color:var(--ink-3);font-size:13px;">
@@ -1062,16 +1103,17 @@ const TECNICOS_OFICIALES = [
   'Personal externo',
 ];
 
+// AJUSTE FASE 2: ítems agrupados (la auditoría 0.4 propuso agrupar la lista plana).
 const NAV_ITEMS = [
-  { id: 'dash',     label: 'Dashboard',  icon: 'ti-layout-dashboard' },
-  { id: 'inv',      label: 'Inventario', icon: 'ti-stethoscope' },
-  { id: 'pmp',      label: 'PMP anual',  icon: 'ti-calendar-month' },
-  { id: 'ciclos',   label: 'Ciclos correctivos', icon: 'ti-tools' },
-  { id: 'entregas', label: 'Entregas',   icon: 'ti-clipboard-list' },
-  { id: 'tareas',   label: 'Pendientes', icon: 'ti-checks' },
-  { id: 'reportes', label: 'Reportes',   icon: 'ti-report' },
-  { id: 'agenda',   label: 'Agenda',     icon: 'ti-address-book' },
-  { id: 'config',   label: 'Configuración', icon: 'ti-settings' },
+  { id: 'dash',     label: 'Dashboard',  icon: 'ti-layout-dashboard', grupo: 'Operación' },
+  { id: 'inv',      label: 'Inventario', icon: 'ti-stethoscope',      grupo: 'Operación' },
+  { id: 'pmp',      label: 'PMP anual',  icon: 'ti-calendar-month',   grupo: 'Operación' },
+  { id: 'ciclos',   label: 'Ciclos correctivos', icon: 'ti-tools',    grupo: 'Operación' },
+  { id: 'entregas', label: 'Entregas',   icon: 'ti-clipboard-list',   grupo: 'Operación' },
+  { id: 'tareas',   label: 'Pendientes', icon: 'ti-checks',           grupo: 'Operación' },
+  { id: 'reportes', label: 'Reportes',   icon: 'ti-report',           grupo: 'Gestión' },
+  { id: 'agenda',   label: 'Agenda',     icon: 'ti-address-book',     grupo: 'Gestión' },
+  { id: 'config',   label: 'Configuración', icon: 'ti-settings',      grupo: 'Sistema' },
 ];
 
 /* ============================================================
@@ -1192,11 +1234,7 @@ function debounce(fn, ms=400) {
   };
 }
 
-function fuzzyMatch(needle, hay) {
-  if (!needle) return true;
-  const n = normalize(needle);
-  return normalize(hay).includes(n);
-}
+// AJUSTE FASE 2 (B-14): se eliminó fuzzyMatch() — función muerta (nunca invocada).
 
 function fuzzyScore(needle, hay) {
   if (!needle) return 0;
@@ -1450,14 +1488,7 @@ const EQ = {
     STATE.equipos.forEach(e => (e.historial || []).forEach(h => { if (h.ejecutor) set.add(h.ejecutor); }));
     return Array.from(set).sort((a,b) => a.localeCompare(b, 'es'));
   },
-  /** Responsables activos en la operación: oficiales + asignaciones + ejecutores + responsables de ciclos abiertos. NO incluye responsableMaster del Excel (referencial). */
-  responsablesActivos() {
-    const set = new Set(this.responsables());
-    STATE.equipos.forEach(e => (e.correctivos||[]).forEach(c => {
-      if (c.apertura?.responsable) set.add(c.apertura.responsable);
-    }));
-    return Array.from(set).sort((a,b) => a.localeCompare(b, 'es'));
-  },
+  // AJUSTE FASE 2 (B-14): se eliminó EQ.responsablesActivos() — método muerto.
 };
 
 /* ============================================================
@@ -3260,25 +3291,8 @@ async function exportPlantillaAsignacion(periodo) {
   document.body.appendChild(a); a.click(); a.remove();
 }
 
-/**
- * Universo de técnicos para sugerir en plantillas y formularios.
- * Fuentes (en este orden): técnicos oficiales SEC + asignaciones mensuales
- * + responsables de aperturas de ciclo + ejecutores históricos.
- * IGNORA `responsableMaster` del Excel (es referencial, no fuente de verdad).
- */
-function sugerirTecnicos() {
-  const set = new Set();
-  (STATE.tecnicosOficiales || []).forEach(n => { if (n) set.add(n); });
-  Object.values(STATE.asignaciones || {}).forEach(per => {
-    if (!per || typeof per !== 'object') return;
-    Object.entries(per).forEach(([k,v]) => { if (k !== '__meta' && v && typeof v === 'string') set.add(v); });
-  });
-  STATE.equipos.forEach(e => (e.correctivos||[]).forEach(c => {
-    if (c.apertura?.responsable) set.add(c.apertura.responsable);
-  }));
-  EQ.ejecutores().forEach(n => set.add(n));
-  return Array.from(set).sort((a,b) => a.localeCompare(b,'es'));
-}
+// AJUSTE FASE 2 (B-14): se eliminó sugerirTecnicos() — función muerta (nunca
+// invocada). selectTecnico() ya cubre la sugerencia de técnicos en formularios.
 
 /* ============================================================
    EXPORT · reporte multi-hoja
@@ -4233,9 +4247,18 @@ async function importBackup() {
 /* ============================================================
    UI · form helpers
    ============================================================ */
+// AJUSTE FASE 2 (B-10): secuencia para generar ids únicos de campos de formulario.
+let _fieldSeq = 0;
 function field(label, control, hint=null, err=null) {
+  // AJUSTE FASE 2 (B-10): asociar el <label> con su control vía for/id para
+  // que los lectores de pantalla los vinculen (antes eran hermanos sueltos).
+  if (control instanceof Node && ['INPUT', 'SELECT', 'TEXTAREA'].includes(control.tagName)) {
+    if (!control.id) control.id = 'fld-' + (++_fieldSeq);
+  }
+  const lbl = h('label', label);
+  if (control instanceof Node && control.id) lbl.setAttribute('for', control.id);
   return h('div.field', [
-    h('label', label),
+    lbl,
     control,
     hint ? h('div.hint', hint) : null,
     err  ? h('div.err', err)  : null,
@@ -4926,8 +4949,11 @@ function abrirModalEnvioST(equipo, opts={}) {
     sub: equipo.nombre,
     size: 'md',
     content: (body) => {
-      // Selector de solicitud
-      if (solicitudesAbiertas.length || true) {
+      // AJUSTE FASE 2 (B-15): el selector de vinculación se muestra siempre
+      // (antes la condición `solicitudesAbiertas.length || true` era código
+      // muerto: siempre verdadera). Se ofrece elegir solicitud o iniciar desde
+      // el envío.
+      {
         body.appendChild(h('div', { style:{ marginBottom:'12px' } }, [
           h('div', { style:{fontSize:'12px', color:'var(--ink-3)', marginBottom:'6px'} }, 'Vincular a:'),
           h('div', { style:{display:'flex', flexDirection:'column', gap:'4px'} },
@@ -5618,20 +5644,40 @@ const REC = (() => {
 /* ============================================================
    UI · sidebar + topbar + router
    ============================================================ */
+/** AJUSTE FASE 2: cierra el panel de navegación móvil (drawer) si está abierto. */
+function cerrarNavMovil() {
+  document.getElementById('app')?.classList.remove('nav-open');
+}
+
 function renderNav() {
   const nav = $('#nav');
   nav.innerHTML = '';
   const main = h('div');
+  let grupoActual = null;
   NAV_ITEMS.forEach(it => {
+    // AJUSTE FASE 2: rótulo de grupo cuando cambia el grupo (sidebar agrupada).
+    if (it.grupo && it.grupo !== grupoActual) {
+      grupoActual = it.grupo;
+      main.appendChild(h('div.nav-group-label', it.grupo));
+    }
     /* AJUSTE R8 H.4: title siempre presente; aparece como tooltip al hover, útil
-       sobre todo cuando la sidebar está colapsada y se ven solo iconos. */
-    const item = h('div.nav-item', { dataset: { view: it.id }, title: it.label }, [
+       sobre todo cuando la sidebar está colapsada y se ven solo iconos.
+       AJUSTE FASE 2 (B-11): tabindex + role + Enter/Espacio para que la
+       navegación sea accesible por teclado (antes los nav-item eran <div> sin
+       foco posible). */
+    const item = h('div.nav-item', {
+      dataset: { view: it.id }, title: it.label, tabindex: '0', role: 'button',
+    }, [
       h('i.ti', { class: 'ti ' + it.icon }),
       h('span', it.label),
       it.soon ? h('span.badge', 'pronto') : null,
     ]);
-    if (STATE.view === it.id) item.classList.add('active');
-    item.addEventListener('click', () => Router.go(it.id));
+    if (STATE.view === it.id) { item.classList.add('active'); item.setAttribute('aria-current', 'page'); }
+    const ir = () => { cerrarNavMovil(); Router.go(it.id); };
+    item.addEventListener('click', ir);
+    item.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ir(); }
+    });
     main.appendChild(item);
   });
   nav.appendChild(main);
@@ -5964,10 +6010,19 @@ function resultadoPill(r) {
 }
 
 function kpiCard({ label, value, kind='', onclick }) {
-  return h(`div.kpi ${kind}`.trim(), { onclick }, [
+  // AJUSTE FASE 2 (B-11): los KPI clickeables ahora son accesibles por teclado.
+  const attrs = { onclick };
+  if (onclick) { attrs.tabindex = '0'; attrs.role = 'button'; }
+  const card = h(`div.kpi ${kind}`.trim(), attrs, [
     h('span.label', label),
     h('span.value', value ?? '—'),
   ]);
+  if (onclick) {
+    card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onclick(e); }
+    });
+  }
+  return card;
 }
 
 function viewHeader({ title, desc, actions=[] }) {
@@ -6390,30 +6445,8 @@ function selectField(label, placeholder, items, value='') {
   return wrap;
 }
 
-function rowForEquipo(e) {
-  const tr = h('tr', { onclick: () => openFicha(e.uuid) });
-  if (e.esSlot) tr.classList.add('is-slot');
-  const pill = e.esSlot
-    ? h('span.pill.muted', 'Slot')
-    : h(`span.pill.${ESTADO_PILL[e.estado]||''}`.trim(), [ h('span.dot'), ESTADO_LABEL[e.estado] || e.estado ]);
-  tr.appendChild(h('td.col-mono', { title: e.id != null && e.id !== '' ? String(e.id) : '' }, e.id != null && e.id !== '' ? String(e.id) : '—'));
-  tr.appendChild(h('td.truncate', { title: e.servicio }, e.servicio || '—'));
-  tr.appendChild(h('td', [
-    h('div', e.nombre || '—'),
-    h('div', { style:{color:'var(--ink-3)', fontSize:'11.5px'} }, e.fam || ''),
-  ]));
-  tr.appendChild(h('td.col-mono', e.carpeta != null && e.carpeta !== '' ? String(e.carpeta) : '—'));
-  tr.appendChild(h('td.col-mono', e.inventario || '—'));
-  tr.appendChild(h('td.col-mono', e.serie || '—'));
-  tr.appendChild(h('td.truncate', { title:`${e.marca} ${e.modelo}` }, `${e.marca || ''} ${e.modelo ? '· ' + e.modelo : ''}`.trim() || '—'));
-  tr.appendChild(h('td', e.frecuencia ? h('span.pill', e.frecuencia) : '—'));
-  tr.appendChild(h('td', pill));
-  // Días en estado actual: visual con color
-  const d = diasEnEstadoActual(e);
-  const dPill = d == null ? '—' : h(`span.pill.${d > 30 ? 'danger' : d > 7 ? 'warning' : 'success'}`, `${Math.floor(d)}d`);
-  tr.appendChild(h('td', dPill));
-  return tr;
-}
+// AJUSTE FASE 2 (B-14): se eliminó rowForEquipo() — función muerta, reemplazada
+// por rowEquipoDinamico() cuando el Inventario pasó a columnas configurables.
 
 /* ============================================================
    UI · ficha 360 (modal)
@@ -6469,14 +6502,17 @@ function openFicha(uuid) {
       const tabs = h('div.tabs', { style:{padding:0, marginBottom:'14px'} });
       const panel = h('div');
       TABS.forEach((t,i) => {
-        const tab = h('div.tab', { dataset:{ tab: t.id } }, [ t.label, t.count != null ? h('span.count', t.count) : null ]);
+        // AJUSTE FASE 2 (B-11): pestañas accesibles por teclado.
+        const tab = h('div.tab', { dataset:{ tab: t.id }, tabindex:'0', role:'tab' }, [ t.label, t.count != null ? h('span.count', t.count) : null ]);
         if (i === 0) tab.classList.add('active');
-        tab.addEventListener('click', () => {
+        const activar = () => {
           $$('.tab', tabs).forEach(x => x.classList.remove('active'));
           tab.classList.add('active');
           panel.innerHTML = '';
           panel.appendChild(renderFichaTab(t.id, e));
-        });
+        };
+        tab.addEventListener('click', activar);
+        tab.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); activar(); } });
         tabs.appendChild(tab);
       });
       body.appendChild(tabs);
@@ -6675,22 +6711,9 @@ function emptyTabHint(msg) {
   return h('div', { style:{ color:'var(--ink-3)', fontSize:'12.5px', padding:'18px 4px' } }, msg);
 }
 
-/* ============================================================
-   VIEW · placeholders (it.2+)
-   ============================================================ */
-function soonView(title, msg) {
-  return {
-    title,
-    render(root) {
-      root.appendChild(viewHeader({ title, desc: 'Vista en construcción' }));
-      root.appendChild(emptyState({
-        icon: 'ti-tools',
-        title: 'Disponible en próxima iteración',
-        desc: msg || 'Esta sección se entrega en la siguiente iteración de la Fase 1.',
-      }));
-    },
-  };
-}
+// AJUSTE FASE 2 (B-14): se eliminó soonView() — función muerta (todas las
+// vistas del menú están implementadas; no quedan placeholders).
+
 VIEWS.pmp = {
   title: 'PMP anual',
   render(root, params={}) {
@@ -9206,6 +9229,10 @@ function boot() {
     aplicarSidebarColapsadaInicial();
     $('#sidebarToggle').addEventListener('click', () => setSidebarColapsada(!sidebarColapsada()));
     $('#openCmdk').addEventListener('click', () => CMDK.open());
+    // AJUSTE FASE 2: navegación móvil — el botón hamburguesa abre/cierra la
+    // sidebar como panel lateral; el velo (scrim) la cierra al tocarlo.
+    $('#menuToggle').addEventListener('click', () => $('#app').classList.toggle('nav-open'));
+    $('#navScrim').addEventListener('click', cerrarNavMovil);
     bus.on('state:change', (slice) => {
       renderSessionChip();
       if (!slice || slice === 'pendientes') {
