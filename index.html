@@ -1435,6 +1435,7 @@ const STATE = {
   cambios: [],             // FASE 3.10 — log de cambios campo-a-campo de equipos
   exportaciones: [],       // FASE 3.1 — registro de exportaciones a Excel
   alertasEstado: {},       // FASE 3.5 — { alertId: 'reconocida' | 'resuelta' }
+  conciliaciones: [],      // FASE 3.7 — historial de conciliaciones contra el maestro
   view: 'dash',
   viewParams: {},
 };
@@ -1464,6 +1465,7 @@ function loadState() {
   STATE.cambios           = STORAGE.read('cambios', []) || [];
   STATE.exportaciones     = STORAGE.read('exportaciones', []) || [];
   STATE.alertasEstado     = STORAGE.read('alertasEstado', {}) || {};
+  STATE.conciliaciones    = STORAGE.read('conciliaciones', []) || [];
 }
 
 function persist(slice) {
@@ -1477,6 +1479,7 @@ function persist(slice) {
   if (!slice || slice === 'cambios')           STORAGE.write('cambios',           STATE.cambios);
   if (!slice || slice === 'exportaciones')     STORAGE.write('exportaciones',     STATE.exportaciones);
   if (!slice || slice === 'alertasEstado')     STORAGE.write('alertasEstado',     STATE.alertasEstado);
+  if (!slice || slice === 'conciliaciones')    STORAGE.write('conciliaciones',    STATE.conciliaciones);
   // FASE 3.8: marca de datos modificados para el respaldo automático al cerrar.
   _datosModificados = true;
   bus.emit('state:change', slice);
@@ -3092,7 +3095,29 @@ async function importMaestroFile(file) {
     ignoradosPrevios: diff.ignoradosPrevios || 0,
   };
   result.diff = diff;
+  // FASE 3.7: registrar la conciliación en el historial.
+  registrarConciliacion(file.name, sheetName, result);
   return result;
+}
+
+/** FASE 3.7 — registra una conciliación contra el maestro en el historial. */
+function registrarConciliacion(archivo, sheet, result) {
+  const t = (result && result.diff && result.diff.totales) || {};
+  STATE.conciliaciones.push({
+    id: uuid(), ts: new Date().toISOString(),
+    archivo: archivo || '', sheet: sheet || '',
+    filas: result.total || 0,
+    nuevos: result.nuevos || 0,
+    actualizados: result.actualizados || 0,
+    mantenidos: result.mantenidos || 0,
+    diffNuevos: t.nuevos || 0,
+    diffAusentes: t.ausentes || 0,
+    diffCambios: t.cambios || 0,
+  });
+  if (STATE.conciliaciones.length > 300) {
+    STATE.conciliaciones.splice(0, STATE.conciliaciones.length - 300);
+  }
+  persist('conciliaciones');
 }
 
 // Campos seguidos en el diff. NO incluye responsableMaster: la fuente de
@@ -4371,6 +4396,7 @@ function construirPayloadBackup() {
     cambios: STATE.cambios,
     exportaciones: STATE.exportaciones,
     alertasEstado: STATE.alertasEstado,
+    conciliaciones: STATE.conciliaciones,
   };
 }
 
@@ -4387,6 +4413,7 @@ function aplicarPayloadBackup(data) {
   STATE.cambios           = Array.isArray(data.cambios) ? data.cambios : [];
   STATE.exportaciones     = Array.isArray(data.exportaciones) ? data.exportaciones : [];
   STATE.alertasEstado     = data.alertasEstado && typeof data.alertasEstado === 'object' ? data.alertasEstado : {};
+  STATE.conciliaciones    = Array.isArray(data.conciliaciones) ? data.conciliaciones : [];
   persist();
 }
 
@@ -9108,8 +9135,43 @@ VIEWS.reportes = {
     sec4.appendChild(h('h3', 'Historial de exportaciones'));
     sec4.appendChild(renderHistorialExportaciones());
     root.appendChild(sec4);
+
+    // ===== FASE 3.7 — Historial de conciliaciones =====
+    const sec5 = h('div.section');
+    sec5.appendChild(h('h3', 'Historial de conciliaciones con el maestro'));
+    sec5.appendChild(renderHistorialConciliaciones());
+    root.appendChild(sec5);
   },
 };
+
+/** FASE 3.7 — tarjeta con el historial de conciliaciones contra el archivo maestro. */
+function renderHistorialConciliaciones() {
+  const card = h('div.card');
+  const concs = STATE.conciliaciones.slice().sort((a, b) => new Date(b.ts) - new Date(a.ts));
+  if (!concs.length) {
+    card.appendChild(h('div', { style:{ color:'var(--ink-3)', fontSize:'12.5px' } },
+      'Aún no se registraron conciliaciones. Cada importación del maestro (Excel o CSV) queda registrada acá con sus conteos.'));
+    return card;
+  }
+  const tbl = h('table.dt');
+  tbl.innerHTML = `<thead><tr><th>Fecha/hora</th><th>Archivo</th><th>Filas</th><th>Nuevos</th><th>Actualizados</th><th>Preservados</th><th>Diferencias</th></tr></thead>`;
+  const tb = h('tbody');
+  concs.slice(0, 200).forEach(c => {
+    tb.appendChild(h('tr', [
+      h('td.col-mono', fmt.datetime(c.ts)),
+      h('td.wrap-2', c.archivo || '—'),
+      h('td', fmt.number(c.filas)),
+      h('td', fmt.number(c.nuevos)),
+      h('td', fmt.number(c.actualizados)),
+      h('td', fmt.number(c.mantenidos)),
+      h('td', { style:{ fontSize:'11.5px', color:'var(--ink-3)' } },
+        `${c.diffNuevos} nuevos · ${c.diffAusentes} ausentes · ${c.diffCambios} con cambios`),
+    ]));
+  });
+  tbl.appendChild(tb);
+  card.appendChild(h('div.table-wrap', [ tbl ]));
+  return card;
+}
 
 /** FASE 3.1 — tarjeta con el registro de exportaciones a Excel. */
 function renderHistorialExportaciones() {
@@ -9947,7 +10009,8 @@ VIEWS.config = {
    ============================================================ */
 async function handleImportMaestro() {
   try {
-    const file = await pickFile('.xlsx,.xlsm');
+    // FASE 3.7: la conciliación también acepta archivos .csv.
+    const file = await pickFile('.xlsx,.xlsm,.csv');
     if (!file) return;
     UI.toast(`Procesando ${file.name}…`, 'info', { duration: 2500 });
     const result = await importMaestroFile(file);
@@ -10391,6 +10454,7 @@ try {
     isoFromDateTime, horaInputValue, abrirModalPosponer,
     calcularAlertas, alertasActivas, reconocerAlerta, resolverAlerta,
     alertasConfig, setAlertasConfig, abrirCentroAlertas, actualizarCampanaAlertas,
+    registrarConciliacion,
   };
 } catch {}
 </script>

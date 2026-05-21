@@ -575,6 +575,32 @@ function assert(cond, msg) { if (!cond) throw new Error(msg || 'aserción falló
     cerrarModales();
   });
 
+  // ============================================================
+  // GRUPO O — Fase 3.7 (conciliación: CSV + historial)
+  // ============================================================
+  check('O-01', '3.7 · registrarConciliacion agrega una entrada al historial', () => {
+    const n0 = P.STATE.conciliaciones.length;
+    P.registrarConciliacion('Maestro_test.csv', 'PMP2026', {
+      total: 100, nuevos: 5, actualizados: 90, mantenidos: 5,
+      diff: { totales: { nuevos: 5, ausentes: 2, cambios: 8 } },
+    });
+    assert(P.STATE.conciliaciones.length === n0 + 1, 'no creció el historial');
+    const last = P.STATE.conciliaciones[P.STATE.conciliaciones.length - 1];
+    assert(last.archivo === 'Maestro_test.csv' && last.diffCambios === 8, JSON.stringify(last));
+  });
+  check('O-02', '3.7 · la importación del maestro acepta archivos .csv', () => {
+    const i = appSrc.indexOf('async function handleImportMaestro');
+    assert(/pickFile\('\.xlsx,\.xlsm,\.csv'\)/.test(appSrc.slice(i, i + 400)), 'handleImportMaestro no acepta .csv');
+  });
+  check('O-03', '3.7 · conciliaciones se incluye en el respaldo', () => {
+    assert('conciliaciones' in P.construirPayloadBackup(), 'falta conciliaciones en el payload');
+  });
+  check('O-04', '3.7 · Reportes muestra el historial de conciliaciones', () => {
+    P.Router.go('reportes');
+    assert(/Historial de conciliaciones/.test(doc.querySelector('#view').textContent),
+      'no aparece la sección de historial de conciliaciones');
+  });
+
   // ---- reporte ----
   const ok = results.filter(r => r.ok).length;
   const fail = results.filter(r => !r.ok).length;
