@@ -431,6 +431,33 @@ function assert(cond, msg) { if (!cond) throw new Error(msg || 'aserción falló
     }
   })();
 
+  // ============================================================
+  // GRUPO J — Fase 3.2 (vistas de filtros guardadas + conteo X de Y)
+  // ============================================================
+  check('J-01', '3.2 · invCrearVista guarda una vista y queda listada', () => {
+    const n0 = P.invListarVistas().length;
+    const v = P.invCrearVista('Vista de prueba', { estado: 'ServicioTecnico' }, ['inventario', 'nombre']);
+    assert(v && v.id, 'no devolvió la vista');
+    assert(P.invListarVistas().length === n0 + 1, 'no quedó listada');
+  });
+  check('J-02', '3.2 · invRenombrarVista cambia el nombre', () => {
+    const v = P.invCrearVista('Nombre viejo', {}, []);
+    P.invRenombrarVista(v.id, 'Nombre nuevo');
+    const vv = P.invListarVistas().find(x => x.id === v.id);
+    assert(vv && vv.nombre === 'Nombre nuevo', 'no renombró: ' + JSON.stringify(vv));
+  });
+  check('J-03', '3.2 · invEliminarVista quita la vista', () => {
+    const v = P.invCrearVista('A borrar', {}, []);
+    P.invEliminarVista(v.id);
+    assert(!P.invListarVistas().some(x => x.id === v.id), 'no se eliminó');
+  });
+  check('J-04', '3.2 · el Inventario muestra el conteo "Mostrando X de Y"', () => {
+    P.Router.go('inv');
+    const meta = doc.querySelector('#view .table-meta');
+    assert(meta && /Mostrando\s+[\d.]+\s+de\s+[\d.]+\s+equipos/.test(meta.textContent),
+      'meta=' + (meta ? meta.textContent : 'ausente'));
+  });
+
   // ---- reporte ----
   const ok = results.filter(r => r.ok).length;
   const fail = results.filter(r => !r.ok).length;

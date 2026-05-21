@@ -4452,6 +4452,31 @@ function confirmarConPalabra({ title, message, palabra, confirmText }) {
   });
 }
 
+/**
+ * Diálogo simple para pedir un texto (nombrar / renombrar). Resuelve con el
+ * texto ingresado, o null si se cancela. Usado por 3.2 (vistas guardadas) y otros.
+ */
+function pedirTexto({ title, label, valor = '', placeholder = '', confirmText = 'Guardar' }) {
+  return new Promise((resolve) => {
+    let val = valor;
+    UI.modal({
+      title, size: 'sm',
+      content: (b) => {
+        const inp = inputCtl({ value: valor, placeholder, oninput: (e) => val = e.target.value });
+        b.appendChild(field(label, inp));
+        inp.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') { e.preventDefault(); b.parentNode.querySelector('.modal-f .btn.primary')?.click(); }
+        });
+        setTimeout(() => { try { inp.focus(); } catch {} }, 30);
+      },
+      footer: (f, { close }) => {
+        f.appendChild(h('button.btn.ghost', { onclick: () => { close('cancel'); resolve(null); } }, 'Cancelar'));
+        f.appendChild(h('button.btn.primary', { onclick: () => { close('ok'); resolve(val.trim() || null); } }, confirmText));
+      },
+    });
+  });
+}
+
 /** FASE 3.8 — restaura un snapshot automático (con confirmación). */
 async function restaurarAutobackup(id) {
   const snap = listarAutobackups().find(s => s.id === id);
@@ -6307,7 +6332,11 @@ VIEWS.inv = {
     const colsBtn = h('button.btn', [ h('i.ti.ti-columns'), 'Columnas ▾' ]);
     colsBtn.onclick = (ev) => abrirPopoverColumnas(ev.currentTarget, () => { recargar(); });
     const vistasBtn = h('button.btn', [ h('i.ti.ti-list'), 'Vistas rápidas ▾' ]);
-    vistasBtn.onclick = (ev) => abrirPopoverVistas(ev.currentTarget, (preset) => aplicarPreset(preset));
+    vistasBtn.onclick = (ev) => abrirPopoverVistas(
+      ev.currentTarget,
+      (preset) => aplicarPreset(preset),
+      () => ({ params: currentParams(), columnas: invColumnasVisibles() }),   // FASE 3.2
+    );
 
     const headerEl = viewHeader({
       title: 'Inventario',
@@ -6341,7 +6370,9 @@ VIEWS.inv = {
       if (!id || id === 'todos') { chipVista.style.display = 'none'; return; }
       chipVista.style.display = '';
       const preset = invGetPresets().find(p => p.id === id);
-      const label = preset ? preset.label : 'Vista personalizada';
+      // FASE 3.2: el chip también reconoce las vistas guardadas por el usuario.
+      const guardada = invListarVistas().find(v => v.id === id);
+      const label = preset ? preset.label : guardada ? guardada.nombre : 'Vista personalizada';
       chipVista.appendChild(h('span', label));
       chipVista.appendChild(h('button.btn.icon.ghost', { style:{padding:'0 2px'}, title:'Volver a Todos activos', onclick: () => aplicarPreset(invGetPresets()[0]) }, [ h('i.ti.ti-x', { style:{fontSize:'13px'} }) ]));
     }
@@ -6536,8 +6567,10 @@ VIEWS.inv = {
 
       current = baseList.sort((a,b) => (a.servicio||'').localeCompare(b.servicio||'','es') || (a.nombre||'').localeCompare(b.nombre||'','es'));
       tb.innerHTML = ''; rendered = 0;
+      // FASE 3.2: conteo "X de Y" sobre el universo visible (slots según preferencia).
+      const universo = showSlots ? STATE.equipos.length : STATE.equipos.filter(e => !e.esSlot).length;
       const extra = showSlots ? '' : ` · ${fmt.number(STATE.equipos.filter(e => e.esSlot).length)} slots ocultos`;
-      meta.textContent = `${fmt.number(current.length)} equipos coinciden con los filtros${extra}`;
+      meta.textContent = `Mostrando ${fmt.number(current.length)} de ${fmt.number(universo)} equipos${extra}`;
       INV_LAST_FILTERED = current;
       INV_LAST_FILTROS = f;
       // Si filtros activos != preset actual, marcar como personalizada (pero solo si había un preset distinto a 'todos').
@@ -6641,9 +6674,11 @@ function abrirPopoverColumnas(anchor, onChange) {
   } });
 }
 
-function abrirPopoverVistas(anchor, onPick) {
-  UI.popover(anchor, { width: 320, render: (body, { close }) => {
-    body.appendChild(h('div', { style:{fontSize:'12px', color:'var(--ink-3)', textTransform:'uppercase', letterSpacing:'.04em', marginBottom:'8px', fontWeight:500} }, 'Vistas rápidas'));
+function abrirPopoverVistas(anchor, onPick, getActual) {
+  const rotulo = (txt) => h('div', { style:{fontSize:'12px', color:'var(--ink-3)', textTransform:'uppercase', letterSpacing:'.04em', margin:'8px 0', fontWeight:500} }, txt);
+  const sep = () => h('hr', { style:{margin:'8px 0', border:0, borderTop:'.5px solid var(--line)'} });
+  UI.popover(anchor, { width: 340, render: (body, { close }) => {
+    body.appendChild(rotulo('Vistas rápidas'));
     invGetPresets().forEach(preset => {
       const desactivado = preset.requiereUsuario && !usuarioActual();
       const item = h('div', {
@@ -6665,6 +6700,44 @@ function abrirPopoverVistas(anchor, onPick) {
       item.addEventListener('mouseleave', () => { item.style.background = ''; });
       body.appendChild(item);
     });
+
+    // FASE 3.2 — vistas guardadas por el usuario
+    body.appendChild(sep());
+    body.appendChild(rotulo('Mis vistas guardadas'));
+    const vistas = invListarVistas();
+    if (!vistas.length) {
+      body.appendChild(h('div', { style:{fontSize:'11.5px', color:'var(--ink-4)', padding:'0 10px 4px'} }, 'Todavía no guardaste ninguna vista.'));
+    } else {
+      vistas.forEach(v => {
+        const item = h('div', { style:{display:'flex', alignItems:'center', gap:'4px', padding:'5px 10px', borderRadius:'6px'} }, [
+          h('div', { style:{flex:1, minWidth:0, cursor:'pointer', fontSize:'13px', fontWeight:500, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'},
+            title: 'Aplicar esta vista',
+            onclick: () => { onPick({ id: v.id, label: v.nombre, params: v.params, columnas: v.columnas }); close(); } }, v.nombre),
+          h('button.btn.icon.ghost', { title:'Renombrar', onclick: async () => {
+            close();
+            const n = await pedirTexto({ title:'Renombrar vista', label:'Nombre', valor: v.nombre });
+            if (n) { invRenombrarVista(v.id, n); UI.toast('Vista renombrada.', 'success'); }
+          } }, [ h('i.ti.ti-pencil', { style:{fontSize:'14px'} }) ]),
+          h('button.btn.icon.ghost', { title:'Eliminar', onclick: async () => {
+            close();
+            const ok = await UI.dialog({ title:'Eliminar vista', message:`¿Eliminar la vista guardada "${v.nombre}"?`, confirmText:'Eliminar', variant:'danger' });
+            if (ok) { invEliminarVista(v.id); UI.toast('Vista eliminada.', 'warning'); }
+          } }, [ h('i.ti.ti-x', { style:{fontSize:'14px'} }) ]),
+        ]);
+        item.addEventListener('mouseenter', () => item.style.background = 'var(--paper-2)');
+        item.addEventListener('mouseleave', () => item.style.background = '');
+        body.appendChild(item);
+      });
+    }
+    body.appendChild(sep());
+    body.appendChild(h('button.btn.sm', { style:{width:'100%', justifyContent:'center'}, onclick: async () => {
+      close();
+      const actual = typeof getActual === 'function' ? getActual() : { params:{}, columnas:[] };
+      const n = await pedirTexto({ title:'Guardar vista', label:'Nombre de la vista', placeholder:'p. ej. ST de Pediatría' });
+      if (!n) return;
+      invCrearVista(n, actual.params, actual.columnas);
+      UI.toast(`Vista "${n}" guardada.`, 'success');
+    } }, [ h('i.ti.ti-bookmark'), 'Guardar la combinación actual' ]));
   } });
 }
 
@@ -7655,6 +7728,39 @@ function invSetColumnasVisibles(keys) {
 function invResetColumnas() {
   UI_INV.columnas = INV_COLUMNAS_DEFAULT.slice();
   try { localStorage.setItem('pmp.v3.ui.inventario.columnas', JSON.stringify(UI_INV.columnas)); } catch {}
+}
+
+/* ============================================================
+   FASE 3.2 — vistas de filtros guardadas por el usuario
+   (preferencia de UI, persistida en localStorage)
+   ============================================================ */
+const INV_VISTAS_KEY = 'pmp.v3.ui.inventario.vistas';
+function invListarVistas() {
+  try { const a = JSON.parse(localStorage.getItem(INV_VISTAS_KEY) || '[]'); return Array.isArray(a) ? a : []; }
+  catch { return []; }
+}
+function invGuardarVistas(arr) {
+  try { localStorage.setItem(INV_VISTAS_KEY, JSON.stringify(arr)); } catch (e) { console.error('[invVistas]', e); }
+}
+function invCrearVista(nombre, params, columnas) {
+  const vistas = invListarVistas();
+  const v = {
+    id: uuid(),
+    nombre: String(nombre || 'Vista').trim() || 'Vista',
+    params: params || {},
+    columnas: Array.isArray(columnas) ? columnas : [],
+  };
+  vistas.push(v);
+  invGuardarVistas(vistas);
+  return v;
+}
+function invRenombrarVista(id, nombre) {
+  const vistas = invListarVistas();
+  const v = vistas.find(x => x.id === id);
+  if (v && nombre && nombre.trim()) { v.nombre = nombre.trim(); invGuardarVistas(vistas); }
+}
+function invEliminarVista(id) {
+  invGuardarVistas(invListarVistas().filter(x => x.id !== id));
 }
 
 /** Render del valor de una celda según su tipo. Devuelve un Node o string. */
@@ -9843,6 +9949,7 @@ try {
     guardarAutobackup, listarAutobackups, eliminarAutobackup, restaurarAutobackup,
     capacidadStorage, autobackupAlArrancar, confirmarConPalabra,
     registrarCambio, cambiosDeEquipo, buscarLibre, openFicha,
+    invListarVistas, invCrearVista, invRenombrarVista, invEliminarVista, pedirTexto,
   };
 } catch {}
 </script>
