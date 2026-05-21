@@ -301,6 +301,38 @@ hr { border: 0; border-top: .5px solid var(--line); margin: 0; }
   color: var(--ink-2);
 }
 
+/* FASE 3.11 — caja de búsqueda libre del header */
+.header-search { position: relative; flex: 0 1 320px; min-width: 130px; }
+.header-search .search { width: 100%; }
+.header-search-results {
+  position: absolute;
+  top: calc(100% + 4px); left: 0; right: 0;
+  background: var(--paper);
+  border: .5px solid var(--line-2);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-3);
+  max-height: 64vh; overflow-y: auto;
+  z-index: var(--z-popover);
+  display: none;
+}
+.header-search-results.open { display: block; }
+.hs-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; cursor: pointer; font-size: 12.5px;
+  border-bottom: .5px solid var(--line);
+}
+.hs-item:last-child { border-bottom: 0; }
+.hs-item:hover, .hs-item.is-active { background: var(--paper-2); }
+.hs-item .hs-main { min-width: 0; flex: 1; }
+.hs-item .hs-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hs-item .hs-sub  { color: var(--ink-3); font-size: 11px; }
+.hs-item .hs-side { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex-shrink: 0; }
+.hs-empty { padding: 16px; color: var(--ink-3); font-size: 12.5px; text-align: center; }
+.hs-foot {
+  padding: 7px 10px; font-size: 11px; color: var(--ink-3);
+  border-top: .5px solid var(--line); background: var(--paper-2);
+}
+
 .view {
   padding: 24px 28px 80px;
   max-width: 1400px;
@@ -988,9 +1020,16 @@ hr { border: 0; border-top: .5px solid var(--line); margin: 0; }
       <span class="sep">·</span>
       <span class="breadcrumb" id="topbarSub"></span>
       <div class="grow"></div>
-      <button class="cmdk-hint" id="openCmdk" title="Buscar (Ctrl+K)">
-        <i class="ti ti-search"></i>
-        Buscar
+      <!-- FASE 3.11: búsqueda libre de equipos, siempre visible. -->
+      <div class="header-search" id="headerSearch">
+        <div class="search">
+          <i class="ti ti-search"></i>
+          <input type="text" id="headerSearchInput" placeholder="Buscar equipo…  ( / )" autocomplete="off" aria-label="Buscar equipo">
+        </div>
+        <div class="header-search-results" id="headerSearchResults"></div>
+      </div>
+      <button class="cmdk-hint" id="openCmdk" title="Comandos (Ctrl+K)">
+        <i class="ti ti-command"></i>
         <kbd>Ctrl K</kbd>
       </button>
     </header>
@@ -9506,6 +9545,130 @@ document.addEventListener('keydown', (e) => {
 });
 
 /* ============================================================
+   FASE 3.11 — Búsqueda libre (caja del header)
+   ============================================================ */
+/**
+ * Busca equipos por número de serie, inventario, nombre/modelo, marca,
+ * responsable y observaciones; si no matchea en esos campos, busca en el
+ * texto de los eventos. Devuelve [{ equipo, donde }] (dónde matcheó).
+ */
+function buscarLibre(q) {
+  const n = normalize(q);
+  if (!n) return [];
+  const out = [];
+  for (const e of STATE.equipos) {
+    const campos = [
+      ['Serie', e.serie], ['N° inventario', e.inventario], ['Nombre', e.nombre],
+      ['Modelo', e.modelo], ['Marca', e.marca], ['Responsable', e.responsableMaster],
+      ['Servicio', e.servicio], ['Observación', e.observacion],
+    ];
+    let donde = null;
+    for (const [label, val] of campos) {
+      if (val && normalize(val).includes(n)) { donde = label; break; }
+    }
+    if (!donde) {
+      const ev = (e.eventos || []).find(x => x.payload && normalize(JSON.stringify(x.payload)).includes(n));
+      if (ev) donde = 'Eventos / comentarios';
+    }
+    if (donde) out.push({ equipo: e, donde });
+    if (out.length >= 60) break;
+  }
+  return out;
+}
+
+/** Conecta la caja de búsqueda del header (resultados en vivo, teclado, atajo "/"). */
+function initHeaderSearch() {
+  const box   = $('#headerSearch');
+  const input = $('#headerSearchInput');
+  const panel = $('#headerSearchResults');
+  if (!box || !input || !panel) return;
+  let resultados = [];
+  let activo = -1;
+
+  function cerrar() { panel.classList.remove('open'); panel.innerHTML = ''; activo = -1; }
+  function abrir()  { panel.classList.add('open'); }
+
+  function pintar() {
+    panel.innerHTML = '';
+    if (!input.value.trim()) { cerrar(); return; }
+    if (!resultados.length) {
+      panel.appendChild(h('div.hs-empty', 'Sin coincidencias.'));
+      abrir();
+      return;
+    }
+    resultados.slice(0, 10).forEach((r, i) => {
+      const e = r.equipo;
+      const ident = e.serie ? 'S/N ' + e.serie : (e.inventario ? 'Inv ' + e.inventario : '—');
+      const item = h('div.hs-item', { dataset:{ idx: i } }, [
+        h('div.hs-main', [
+          h('div.hs-name', e.nombre || '(sin nombre)'),
+          h('div.hs-sub', `${ident} · ${e.servicio || '—'} · coincide en ${r.donde}`),
+        ]),
+        h('div.hs-side', [
+          h(`span.pill.${ESTADO_PILL[e.estado] || 'muted'}`, ESTADO_LABEL[e.estado] || e.estado || '—'),
+        ]),
+      ]);
+      item.addEventListener('mousedown', (ev) => { ev.preventDefault(); elegir(i); });
+      item.addEventListener('mouseenter', () => { activo = i; marcar(); });
+      panel.appendChild(item);
+    });
+    if (resultados.length > 10) {
+      panel.appendChild(h('div.hs-foot', `${resultados.length} resultados · Enter abre el listado completo`));
+    }
+    abrir();
+    marcar();
+  }
+  function marcar() {
+    $$('.hs-item', panel).forEach((el, i) => el.classList.toggle('is-active', i === activo));
+  }
+  function elegir(i) {
+    const r = resultados[i];
+    if (!r) return;
+    input.value = '';
+    cerrar();
+    openFicha(r.equipo.uuid);
+  }
+  function irAlListado() {
+    const q = input.value.trim();
+    cerrar();
+    if (q) Router.go('inv', { q });
+  }
+
+  const buscar = debounce(() => {
+    resultados = buscarLibre(input.value);
+    activo = -1;
+    pintar();
+  }, 200);
+
+  input.addEventListener('input', buscar);
+  input.addEventListener('focus', () => { if (input.value.trim()) pintar(); });
+  input.addEventListener('keydown', (e) => {
+    const items = $$('.hs-item', panel);
+    if (e.key === 'ArrowDown') { e.preventDefault(); activo = Math.min(activo + 1, items.length - 1); marcar(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); activo = Math.max(activo - 1, 0); marcar(); }
+    else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (activo >= 0 && resultados[activo]) elegir(activo);
+      else irAlListado();
+    }
+    else if (e.key === 'Escape') { input.value = ''; cerrar(); input.blur(); }
+  });
+  // Cerrar al hacer clic fuera.
+  document.addEventListener('mousedown', (e) => {
+    if (!box.contains(e.target)) cerrar();
+  });
+  // Atajo "/" para enfocar la caja (si no se está escribiendo en otro campo).
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+    const t = e.target;
+    const escribiendo = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+    if (escribiendo) return;
+    e.preventDefault();
+    input.focus();
+  });
+}
+
+/* ============================================================
    THEME
    ============================================================ */
 /* AJUSTE R8 H.1: estado y persistencia del modo colapsado de la sidebar. */
@@ -9595,6 +9758,8 @@ function boot() {
     // sidebar como panel lateral; el velo (scrim) la cierra al tocarlo.
     $('#menuToggle').addEventListener('click', () => $('#app').classList.toggle('nav-open'));
     $('#navScrim').addEventListener('click', cerrarNavMovil);
+    // FASE 3.11: caja de búsqueda libre del header.
+    initHeaderSearch();
     bus.on('state:change', (slice) => {
       renderSessionChip();
       if (!slice || slice === 'pendientes') {
@@ -9677,7 +9842,7 @@ try {
     construirPayloadBackup, aplicarPayloadBackup, exportBackup, importBackup,
     guardarAutobackup, listarAutobackups, eliminarAutobackup, restaurarAutobackup,
     capacidadStorage, autobackupAlArrancar, confirmarConPalabra,
-    registrarCambio, cambiosDeEquipo,
+    registrarCambio, cambiosDeEquipo, buscarLibre, openFicha,
   };
 } catch {}
 </script>
