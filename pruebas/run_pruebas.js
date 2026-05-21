@@ -601,6 +601,27 @@ function assert(cond, msg) { if (!cond) throw new Error(msg || 'aserción falló
       'no aparece la sección de historial de conciliaciones');
   });
 
+  // ============================================================
+  // GRUPO P — Fase 3.6 (informe mensual: una hoja por servicio)
+  // ============================================================
+  check('P-01', '3.6 · el informe mensual ofrece "Todos los servicios"', () => {
+    P.Router.go('reportes');
+    const opciones = [...doc.querySelectorAll('#view select option')].map(o => o.textContent);
+    assert(opciones.includes('Todos los servicios'), 'falta la opción "Todos los servicios"');
+  });
+  check('P-02', '3.6 · exportInformeMensualMulti arma Resumen + una hoja por servicio', () => {
+    const i = appSrc.indexOf('async function exportInformeMensualMulti');
+    const blk = appSrc.slice(i, i + 2600);
+    assert(/book_append_sheet\(wb, wsR, 'Resumen'\)/.test(blk), 'no agrega la hoja Resumen');
+    assert(/infos\.forEach\(info => \{[\s\S]*book_append_sheet\(wb, ws, nombre\)/.test(blk), 'no agrega una hoja por servicio');
+  });
+  check('P-03', '3.6 · calcularInformeServicio devuelve totales coherentes', () => {
+    const sv = P.STATE.equipos.find(e => e.servicio && !e.esSlot).servicio;
+    const info = P.calcularInformeServicio(sv, 5, 2026);
+    assert(info && info.totales && typeof info.totales.equipos === 'number', 'totales mal formados');
+    assert(Array.isArray(info.items), 'items no es lista');
+  });
+
   // ---- reporte ----
   const ok = results.filter(r => r.ok).length;
   const fail = results.filter(r => !r.ok).length;

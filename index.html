@@ -3896,6 +3896,64 @@ async function exportInformeServicio(info) {
   XLSX.writeFile(wb, `informe_${normalize(info.servicio).replace(/\s+/g,'_')}_${info.anio}_${String(info.mes).padStart(2,'0')}.xlsx`);
 }
 
+/**
+ * FASE 3.6 — informe mensual de preventivas con UNA HOJA POR SERVICIO + una
+ * hoja "Resumen" (conteos por servicio y por resultado/estado final).
+ */
+async function exportInformeMensualMulti(servicios, mes, anio) {
+  await ensureXLSX();
+  if (!servicios || !servicios.length) throw new Error('Elegí al menos un servicio.');
+  const wb = XLSX.utils.book_new();
+  const infos = servicios.map(sv => calcularInformeServicio(sv, mes, anio));
+
+  // Hoja Resumen (primera)
+  const resumen = [
+    [`Informe de preventivas · ${MESES[mes-1]} ${anio}`],
+    [''],
+    ['Servicio','Equipos','Programadas','Ejecutadas','Causalizadas','Pendientes','% cumplimiento'],
+  ];
+  const totRes = {};
+  infos.forEach(info => {
+    const t = info.totales;
+    resumen.push([info.servicio, t.equipos, t.programadas, t.ejecutadas, t.causalizadas, t.pendientes,
+      t.programadas ? Math.round(t.ejecutadas / t.programadas * 100) + '%' : '—']);
+    info.items.forEach(({ ultimo }) => {
+      const k = ultimo ? (ultimo.resultado || '—') : 'sin registro';
+      totRes[k] = (totRes[k] || 0) + 1;
+    });
+  });
+  resumen.push(['']);
+  resumen.push(['Conteo por resultado de MP','']);
+  Object.entries(totRes).sort((a,b) => b[1]-a[1]).forEach(([k,v]) => resumen.push([RESULTADO_LABEL[k] || k, v]));
+  const wsR = XLSX.utils.aoa_to_sheet(resumen);
+  wsR['!cols'] = [{wch:30},{wch:12},{wch:12},{wch:12},{wch:12},{wch:12},{wch:16}];
+  XLSX.utils.book_append_sheet(wb, wsR, 'Resumen');
+
+  // Una hoja por servicio
+  const usados = new Set(['Resumen']);
+  infos.forEach(info => {
+    const rows = [
+      ['Equipo','Serie','Inventario','Frecuencia','Programado','Resultado','Ejecutor','Estado final','Observación'],
+      ...info.items.map(({ equipo:e, prog, ultimo }) => [
+        e.nombre, e.serie, e.inventario, e.frecuencia, prog || '',
+        ultimo?.resultado || '', ultimo?.ejecutor || '',
+        ultimo?.estadoFinal ? (ESTADO_LABEL[ultimo.estadoFinal] || ultimo.estadoFinal) : (ESTADO_LABEL[e.estado] || e.estado),
+        ultimo?.obs || '',
+      ]),
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [{wch:30},{wch:14},{wch:14},{wch:12},{wch:11},{wch:11},{wch:22},{wch:18},{wch:30}];
+    // Nombre de hoja: máx 31 chars, sin caracteres inválidos, único.
+    let nombre = (info.servicio || 'Servicio').replace(/[\\/?*\[\]:]/g, ' ').trim().slice(0, 31) || 'Servicio';
+    let base = nombre, n = 2;
+    while (usados.has(nombre)) { nombre = (base.slice(0, 28) + ' ' + n).slice(0, 31); n++; }
+    usados.add(nombre);
+    XLSX.utils.book_append_sheet(wb, ws, nombre);
+  });
+
+  XLSX.writeFile(wb, `informe_preventivas_${anio}_${String(mes).padStart(2,'0')}.xlsx`);
+}
+
 function imprimirInformeServicio(info) {
   const rows = info.items.map(({equipo:e, prog, ultimo}) => `
     <tr>
@@ -9220,33 +9278,78 @@ function renderInformeServicioBlock(params) {
     card.appendChild(h('div', { style:{color:'var(--ink-3)', fontSize:'12.5px'} }, 'No hay servicios cargados.'));
     return card;
   }
+  // FASE 3.6: el mes por defecto es el mes ANTERIOR al actual (lo más habitual
+  // para un informe de cierre); se puede elegir un servicio o "todos".
+  const hoy = new Date();
+  const mesAnterior = hoy.getMonth() === 0 ? 12 : hoy.getMonth();
+  const anioMesAnt  = hoy.getMonth() === 0 ? hoy.getFullYear() - 1 : hoy.getFullYear();
   let snap = {
-    servicio: params.servicio || servicios[0],
-    mes:      params.mes      || new Date().getMonth()+1,
-    anio:     params.anio     || new Date().getFullYear(),
+    servicio: params.servicio || '__TODOS__',
+    mes:      params.mes      || mesAnterior,
+    anio:     params.anio     || anioMesAnt,
   };
   const previewArea = h('div');
 
+  function serviciosSeleccionados() {
+    return snap.servicio === '__TODOS__' ? servicios.slice() : [snap.servicio];
+  }
+
   function refresh() {
-    const info = calcularInformeServicio(snap.servicio, snap.mes, snap.anio);
+    const seleccion = serviciosSeleccionados();
     previewArea.innerHTML = '';
-    const totales = info.totales;
-    previewArea.appendChild(h('div.kpi-grid', { style:{marginBottom:'10px'} }, [
-      kpiCard({ label:'Equipos',      value: fmt.number(totales.equipos) }),
-      kpiCard({ label:'Programadas',  value: fmt.number(totales.programadas) }),
-      kpiCard({ label:'Ejecutadas',   value: fmt.number(totales.ejecutadas), kind:'success' }),
-      kpiCard({ label:'Causalizadas', value: fmt.number(totales.causalizadas), kind:'warning' }),
-      kpiCard({ label:'Pendientes',   value: fmt.number(totales.pendientes), kind: totales.pendientes ? 'danger' : 'muted' }),
+    // Preview: tabla resumen por servicio.
+    const infos = seleccion.map(sv => calcularInformeServicio(sv, snap.mes, snap.anio));
+    const totGlobal = infos.reduce((acc, info) => {
+      const t = info.totales;
+      acc.equipos += t.equipos; acc.programadas += t.programadas;
+      acc.ejecutadas += t.ejecutadas; acc.causalizadas += t.causalizadas; acc.pendientes += t.pendientes;
+      return acc;
+    }, { equipos:0, programadas:0, ejecutadas:0, causalizadas:0, pendientes:0 });
+
+    previewArea.appendChild(h('div.kpi-grid', { style:{ marginBottom:'10px' } }, [
+      kpiCard({ label: seleccion.length > 1 ? `Equipos (${seleccion.length} servicios)` : 'Equipos', value: fmt.number(totGlobal.equipos) }),
+      kpiCard({ label:'Programadas',  value: fmt.number(totGlobal.programadas) }),
+      kpiCard({ label:'Ejecutadas',   value: fmt.number(totGlobal.ejecutadas), kind:'success' }),
+      kpiCard({ label:'Causalizadas', value: fmt.number(totGlobal.causalizadas), kind:'warning' }),
+      kpiCard({ label:'Pendientes',   value: fmt.number(totGlobal.pendientes), kind: totGlobal.pendientes ? 'danger' : 'muted' }),
     ]));
-    const acts = h('div', { style:{display:'flex', gap:'8px', marginTop:'4px'} }, [
-      h('button.btn', { onclick: () => exportInformeServicio(info).then(()=>UI.toast('Excel descargado.','success')).catch(e=>bus.emit('error',e)) }, [ h('i.ti.ti-file-spreadsheet'), 'Excel' ]),
-      h('button.btn', { onclick: () => imprimirInformeServicio(info) }, [ h('i.ti.ti-printer'), 'Imprimir' ]),
+
+    if (!totGlobal.programadas && !totGlobal.ejecutadas && !totGlobal.causalizadas) {
+      previewArea.appendChild(h('div.banner.info', { style:{ marginBottom:'8px' } }, [
+        h('i.ti.ti-info-circle'),
+        h('div.grow', `No hay actividad de MP registrada en ${MESES[snap.mes-1]} ${snap.anio} para la selección.`),
+      ]));
+    }
+
+    if (seleccion.length > 1) {
+      const tbl = h('table.dt');
+      tbl.innerHTML = `<thead><tr><th>Servicio</th><th>Equipos</th><th>Programadas</th><th>Ejecutadas</th><th>Causalizadas</th><th>Pendientes</th></tr></thead>`;
+      const tb = h('tbody');
+      infos.forEach(info => {
+        const t = info.totales;
+        tb.appendChild(h('tr', [
+          h('td', info.servicio), h('td', fmt.number(t.equipos)), h('td', fmt.number(t.programadas)),
+          h('td', fmt.number(t.ejecutadas)), h('td', fmt.number(t.causalizadas)), h('td', fmt.number(t.pendientes)),
+        ]));
+      });
+      tbl.appendChild(tb);
+      previewArea.appendChild(h('div.table-wrap', { style:{ marginBottom:'10px' } }, [ tbl ]));
+    }
+
+    const acts = h('div', { style:{ display:'flex', gap:'8px', marginTop:'4px', flexWrap:'wrap' } }, [
+      h('button.btn', { onclick: () => exportInformeMensualMulti(seleccion, snap.mes, snap.anio)
+        .then(() => UI.toast('Excel descargado (una hoja por servicio + resumen).', 'success'))
+        .catch(e => bus.emit('error', e)) }, [ h('i.ti.ti-file-spreadsheet'), 'Excel (hoja por servicio)' ]),
     ]);
+    if (seleccion.length === 1) {
+      acts.appendChild(h('button.btn', { onclick: () => imprimirInformeServicio(infos[0]) }, [ h('i.ti.ti-printer'), 'Imprimir' ]));
+    }
     previewArea.appendChild(acts);
   }
 
+  const opcionesServicio = [{ value:'__TODOS__', label:'Todos los servicios' }, ...servicios.map(s => ({ value:s, label:s }))];
   const ctrl = h('div', { style:{display:'grid', gridTemplateColumns:'2fr 1fr 1fr', gap:'10px', marginBottom:'12px'} }, [
-    field('Servicio', selectCtl(servicios, snap.servicio, { onchange:(e)=> { snap.servicio = e.target.value; refresh(); } })),
+    field('Servicio', selectCtl(opcionesServicio, snap.servicio, { onchange:(e)=> { snap.servicio = e.target.value; refresh(); } })),
     field('Mes',      selectCtl(MESES.map((n,i)=>({value:String(i+1),label:n})), String(snap.mes), { onchange:(e)=> { snap.mes = Number(e.target.value); refresh(); } })),
     field('Año',      inputCtl({ type:'number', min:2020, max:2100, value: snap.anio, oninput:(e)=> { snap.anio = Number(e.target.value)||snap.anio; refresh(); } })),
   ]);
@@ -10454,7 +10557,7 @@ try {
     isoFromDateTime, horaInputValue, abrirModalPosponer,
     calcularAlertas, alertasActivas, reconocerAlerta, resolverAlerta,
     alertasConfig, setAlertasConfig, abrirCentroAlertas, actualizarCampanaAlertas,
-    registrarConciliacion,
+    registrarConciliacion, exportInformeMensualMulti, calcularInformeServicio,
   };
 } catch {}
 </script>
