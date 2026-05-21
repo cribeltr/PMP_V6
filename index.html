@@ -24,20 +24,33 @@
    TOKENS
    ============================================================ */
 :root {
-  --paper:        #faf9f5;
-  --paper-2:      #f6f5f1;
-  --paper-3:      #efeee9;
+  /* ── FASE 2.5 · Superficies (paradigma de ventanas flotantes) ──
+     Fondo neutro claro de la app; paneles flotantes en blanco puro. */
+  --bg-app:        #f4f5f7;   /* fondo de la aplicación (no blanco puro) */
+  --bg-surface:    #ffffff;   /* paneles/cards/modales flotantes */
+  --bg-surface-2:  #f4f6f8;   /* zonas secundarias dentro de un panel */
+  /* Alias históricos: --paper* se mantiene como nombre para no tocar cientos
+     de selectores; ahora apunta al nuevo sistema de superficies. */
+  --paper:        var(--bg-surface);
+  --paper-2:      var(--bg-surface-2);
+  --paper-3:      #eaedf1;
   --ink:          #1f1d18;
   --ink-2:        #45413a;
   /* AJUSTE FASE 2: --ink-3 oscurecido para cumplir contraste WCAG AA (>=4.5:1)
-     sobre --paper en texto pequeño (antes #7a766c quedaba ~4.2:1). */
+     sobre superficie en texto pequeño. */
   --ink-3:        #6e6a60;
-  --ink-4:        #aaa498;
-  --line:         rgba(0,0,0,.08);
-  --line-2:       rgba(0,0,0,.14);
-  --line-strong:  rgba(0,0,0,.22);
+  --ink-4:        #9a958b;
+  /* FASE 2.5: nombres semánticos de texto (alias de la escala --ink*). */
+  --text-primary:   var(--ink);
+  --text-secondary: var(--ink-2);
+  --text-tertiary:  var(--ink-3);
+  /* FASE 2.5: bordes sutiles en lugar de divisores duros. */
+  --border-subtle: rgba(15,23,42,.06);
+  --line:         rgba(15,23,42,.06);
+  --line-2:       rgba(15,23,42,.10);
+  --line-strong:  rgba(15,23,42,.20);
 
-  /* AJUSTE R8 B.1: paleta semántica calmada para uso prolongado. Contrastes ≥ 4.5 vs --paper. */
+  /* AJUSTE R8 B.1: paleta semántica calmada para uso prolongado. */
   --info:         #3b6ea8;
   --info-bg:      #eaf1f8;
   --success:      #3d7a52;
@@ -48,18 +61,33 @@
   --danger-bg:    #f3e2e0;
   --purple:       #6c569c;
   --purple-bg:    #ebe4f1;
+  /* FASE 2.5: alias semánticos pedidos por la dirección visual. */
+  --error:        var(--danger);
+  --accent:       var(--info);   /* color de acento; la identidad primaria sigue siendo --ink */
 
-  --r-sm: 4px;
-  --r-md: 6px;
-  --r-lg: 10px;
-  --r-xl: 14px;
+  /* ── FASE 2.5 · Radios (tokens, no valores sueltos) ── */
+  --radius-sm:   8px;     /* botones, inputs, chips pequeños */
+  --radius-md:   12px;    /* cards, paneles, dropdowns */
+  --radius-lg:   16px;    /* modales, drawers */
+  --radius-pill: 999px;   /* chips, badges, tags */
+  /* Alias históricos re-apuntados al nuevo sistema. */
+  --r-sm: var(--radius-sm);
+  --r-md: var(--radius-md);
+  --r-lg: var(--radius-md);
+  --r-xl: var(--radius-lg);
 
-  --shadow-1: 0 1px 0 rgba(0,0,0,.05);
-  --shadow-2: 0 4px 16px rgba(0,0,0,.06);
-  --shadow-3: 0 20px 60px rgba(0,0,0,.18);
+  /* ── FASE 2.5 · Sombras suaves multicapa (tres niveles) ── */
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.03), 0 1px 3px rgba(0,0,0,.04);
+  --shadow-md: 0 1px 2px rgba(0,0,0,.04), 0 4px 12px rgba(0,0,0,.06);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,.08), 0 24px 48px rgba(0,0,0,.08);
+  /* Alias históricos. */
+  --shadow-1: var(--shadow-sm);
+  --shadow-2: var(--shadow-md);
+  --shadow-3: var(--shadow-lg);
 
-  --backdrop: rgba(31,29,24,.28);
-  --backdrop-stacked: rgba(31,29,24,.14);
+  /* FASE 2.5: backdrop oscurecido sutil (rgba slate .4). */
+  --backdrop: rgba(15,23,42,.4);
+  --backdrop-stacked: rgba(15,23,42,.22);
   --select-arrow: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path fill='none' stroke='%237a766c' stroke-width='1.4' d='M2 4l3 3 3-3'/></svg>";
 
   --sb-w: 232px;
@@ -71,6 +99,10 @@
   --z-toast:   400;
   --z-cmdk:    500;
 
+  /* FASE 2.5: tipografía moderna. Stack del sistema (incluye Inter si está
+     instalada). Decisión offline documentada en FASE_2_5_REPORTE.md. */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
   /* AJUSTE FASE 2 — sistema de diseño explícito.
      Escala de espaciado con base 4px (úsese en reglas CSS nuevas o revisadas). */
   --sp-1: 4px;
@@ -79,8 +111,7 @@
   --sp-4: 16px;
   --sp-5: 24px;
   --sp-6: 32px;
-  /* Escala tipográfica modular — 6 tamaños. Reemplaza la dispersión previa
-     (~13 tamaños distintos detectada en la auditoría 0.3). */
+  /* Escala tipográfica modular — 6 tamaños. */
   --fs-xs:   11px;
   --fs-sm:   12px;
   --fs-base: 13px;
@@ -90,8 +121,12 @@
 }
 
 :root[data-theme="dark"] {
-  --paper:        #0e141b;
-  --paper-2:      #161d26;
+  /* FASE 2.5: superficies del tema oscuro. */
+  --bg-app:        #0b1117;
+  --bg-surface:    #0e141b;
+  --bg-surface-2:  #161d26;
+  --paper:        var(--bg-surface);
+  --paper-2:      var(--bg-surface-2);
   --paper-3:      #1f2832;
   --ink:          #e6ecf2;
   --ink-2:        #b3bcc6;
@@ -100,6 +135,7 @@
   --line:         rgba(255,255,255,.07);
   --line-2:       rgba(255,255,255,.13);
   --line-strong:  rgba(255,255,255,.22);
+  --border-subtle: rgba(255,255,255,.07);
 
   /* AJUSTE R8 B.2: paleta semántica del tema oscuro suavizada. Los *-bg quedan igual. */
   --info:         #7ab1de;
