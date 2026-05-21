@@ -622,6 +622,26 @@ function assert(cond, msg) { if (!cond) throw new Error(msg || 'aserción falló
     assert(Array.isArray(info.items), 'items no es lista');
   });
 
+  // ============================================================
+  // GRUPO Q — Fase 3.9 (dashboard: atajos rápidos y medición de render)
+  // ============================================================
+  check('Q-01', '3.9 · el Dashboard muestra la sección "Atajos rápidos"', () => {
+    P.Router.go('dash');
+    assert(/Atajos rápidos/.test(doc.querySelector('#view').textContent), 'no aparece la sección de atajos');
+  });
+  check('Q-02', '3.9 · el Dashboard muestra el KPI de alertas activas', () => {
+    P.Router.go('dash');
+    const labels = [...doc.querySelectorAll('#view .kpi .label')].map(l => l.textContent);
+    assert(labels.includes('Alertas activas'), 'falta el KPI de alertas activas: ' + JSON.stringify(labels));
+  });
+  check('Q-03', '3.9 · el render del Dashboard se mide y queda bajo 1 s', () => {
+    const t0 = Date.now();
+    P.Router.go('dash');
+    const ms = Date.now() - t0;
+    assert(ms < 1000, `el Dashboard tardó ${ms} ms (objetivo < 1000 ms)`);
+    assert(/performance/.test(appSrc) && /\[perf\] Dashboard/.test(appSrc), 'no hay medición de rendimiento del dashboard');
+  });
+
   // ---- reporte ----
   const ok = results.filter(r => r.ok).length;
   const fail = results.filter(r => !r.ok).length;

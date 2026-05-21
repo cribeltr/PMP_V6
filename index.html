@@ -6267,8 +6267,15 @@ const Router = {
     const root = $('#view');
     root.innerHTML = '';
     updateTopbar(view.title, view.sub || '');
+    // FASE 3.9: medición de rendimiento del render (objetivo Dashboard < 1 s).
+    const _t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
     try { view.render(root, params); }
     catch (e) { console.error(e); bus.emit('error', e); }
+    const _ms = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - _t0;
+    if (viewId === 'dash') {
+      console.info(`[perf] Dashboard renderizado en ${_ms.toFixed(1)} ms (${fmt.number(STATE.equipos.length)} equipos).`);
+      if (_ms > 1000) console.warn('[perf] El Dashboard superó 1 s de render — considerar optimización.');
+    }
     // FASE 3.8: banner persistente de capacidad de almacenamiento (>=80%).
     try { const bc = bannerCapacidad(); if (bc) root.insertBefore(bc, root.firstChild); } catch {}
   },
@@ -6347,6 +6354,9 @@ VIEWS.dash = {
     kpis.appendChild(kpiCard({ label: 'Ciclos correctivos', value: fmt.number(ciclos), kind: ciclos ? 'info' : 'muted', onclick: () => Router.go('ciclos') }));
     kpis.appendChild(kpiCard({ label: 'Mis pendientes hoy', value: fmt.number(misHoy), kind: misHoy ? 'warning' : 'muted', onclick: () => { UI_PEND.filtros = { estado:'', asignado: yo || '', desde:'', hasta: new Date().toISOString().slice(0,10) }; Router.go('tareas'); } }));
     kpis.appendChild(kpiCard({ label: 'Pendientes vencidos', value: fmt.number(pendVencidos), kind: pendVencidos ? 'danger' : 'muted', onclick: () => { UI_PEND.filtros = { estado:'', asignado:'', desde:'', hasta: new Date().toISOString().slice(0,10) }; Router.go('tareas'); } }));
+    // FASE 3.9: KPI de alertas activas — abre el centro de alertas.
+    const nAlertas = (() => { try { return alertasActivas().length; } catch { return 0; } })();
+    kpis.appendChild(kpiCard({ label: 'Alertas activas', value: fmt.number(nAlertas), kind: nAlertas ? 'danger' : 'muted', onclick: () => abrirCentroAlertas() }));
     root.appendChild(kpis);
 
     // === Fila 2 — Atenciones críticas ===
@@ -6553,6 +6563,29 @@ VIEWS.dash = {
       sec.appendChild(wrap);
     }
     root.appendChild(sec);
+
+    // === FASE 3.9 — Atajos rápidos ===
+    root.appendChild(h('div', { style:{fontSize:'11.5px', color:'var(--ink-3)', textTransform:'uppercase', letterSpacing:'.04em', margin:'8px 0', fontWeight:500} }, 'Atajos rápidos'));
+    const atajos = [
+      { label:'Importar / conciliar maestro', icon:'ti-file-spreadsheet', onclick: handleImportMaestro },
+      { label:'Informe mensual', icon:'ti-report', onclick: () => Router.go('reportes') },
+      { label:'Exportar inventario', icon:'ti-file-export', onclick: () => Router.go('inv') },
+      { label:'Centro de alertas', icon:'ti-bell', onclick: () => abrirCentroAlertas() },
+      { label:'Nuevo pendiente', icon:'ti-plus', onclick: () => abrirModalNuevoPendiente() },
+    ];
+    const atajosGrid = h('div', { style:{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(200px,1fr))', gap:'10px'} },
+      atajos.map(a => {
+        const card = h('div.card', {
+          style:{ cursor:'pointer', display:'flex', alignItems:'center', gap:'10px' },
+          tabindex:'0', role:'button', onclick: a.onclick,
+        }, [
+          h('i.ti', { class:'ti ' + a.icon, style:{fontSize:'22px', color:'var(--info)'} }),
+          h('div', { style:{fontWeight:500, fontSize:'13px'} }, a.label),
+        ]);
+        card.addEventListener('keydown', (e) => { if (e.key==='Enter'||e.key===' ') { e.preventDefault(); a.onclick(); } });
+        return card;
+      }));
+    root.appendChild(atajosGrid);
   },
 };
 
